@@ -1,0 +1,180 @@
+#include "mp_renderer.h"
+
+const unsigned threadN=65536/4;
+
+namespace cuda_renderer
+{
+
+__device__ 
+Vec VecCreate(float x, float y, float z)
+{
+	Vec res;
+	res.x=x;
+	res.y=y;
+	res.z=z;
+	return res;
+}
+
+__device__ 
+Vec VecAdd(Vec a, Vec b)
+{
+	return VecCreate(a.x + b.x, a.y + b.y, a.z + b.z);
+}
+
+__device__ 
+Vec VecSub(Vec A, Vec B) 
+{
+	A.x-=B.x;
+	A.y-=B.y;
+	A.z-=B.z;
+	return A;	
+}
+
+__device__ 
+float DotProduct(Vec A, Vec B) 
+{ 
+	return A.x*B.x + A.y*B.y + A.z*B.z;
+}
+
+__device__ 
+float VecLen(Vec a) 
+{ 
+	return sqrt(DotProduct(a,a));
+}
+__device__ 
+Vec VecMul(Vec v,float t)  
+{ 
+	v.x*=t;
+	v.y*=t;
+	v.z*=t;
+	return v;	
+}   
+__device__ 
+Vec VecUnit(Vec a) 
+{ 
+	return VecMul(a, 1.0f/VecLen(a));
+}
+
+struct PointProjection
+{
+	float x;
+	float y;
+	float zdistRec;
+};
+
+__device__
+PointProjection PerspProj(Vec t, Camera k)
+{	
+	PointProjection ret;
+	Vec diff=VecSub(t,k.eye);        
+	float zdist = DotProduct(diff, k.dir);	
+	
+	if (zdist < 0.1f) {
+		ret.zdistRec = -1;
+		return ret;		
+		}
+	ret.zdistRec=1.0f/zdist;
+	Vec proj=VecMul(diff, k.screenDist * ret.zdistRec);		
+	proj =VecAdd(proj, k.upLeftCornerTrans);
+	ret.x = DotProduct(proj, k.xd);
+	ret.y = DotProduct(proj, k.yd);	
+	return ret;        
+}
+
+__global__ 
+void MovingPointsRenderer(
+		Camera cam,
+		float* mpData,
+		int mpN,
+		SMpBufDesc* bufDesc,		
+		int bufN,
+		unsigned* intensityRaster,
+		int screenW, int screenH,
+		unsigned curtime,
+		float brightnessMultiplier,
+		float lengthMultiplier
+		)				
+{		
+	const unsigned idx = blockIdx.x*blockDim.x + threadIdx.x;	
+							
+	int bufI=0;
+	for (unsigned i=idx; true; i+=threadN)
+		{		
+		while (i>=bufDesc[bufI].n) {
+			i -= bufDesc[bufI].n;
+			bufI++;
+			if (bufI>=bufN)
+				return;
+			}
+		int pitch = bufDesc[bufI].n;				
+		const unsigned timeMs = curtime - bufDesc[bufI].startTime;		
+		float* data =&mpData[bufDesc[bufI].beg + i];
+		
+		float mpBegX = data[pitch*0];
+		float mpBegY = data[pitch*1];
+		float mpBegZ = data[pitch*2];
+		float mpVelX = data[pitch*3];
+		float mpVelY = data[pitch*4];
+		float mpVelZ = data[pitch*5];
+		float mpOffs = data[pitch*6];
+		float mpBrig = data[pitch*7];
+		
+		Vec beg=VecCreate(mpBegX,mpBegY,mpBegZ);
+		Vec v  =VecCreate(mpVelX,mpVelY,mpVelZ);
+		//Vec v(1,1,1);
+		
+		float pos =mpOffs + timeMs*(1/4000.0f);
+		if (pos>1) continue;		
+		Vec p = VecAdd(beg,VecMul(v,pos*lengthMultiplier));
+		
+		PointProjection proj = PerspProj(p,cam);
+		
+		if (proj.zdistRec<=0) continue;
+		float brightness = mpBrig * proj.zdistRec * proj.zdistRec * brightnessMultiplier;
+				
+		int x = int(proj.x);
+		int y = int(proj.y);
+		
+		if (x<0 || x>=screenW) continue;
+		if (y<0 || y>=screenH) continue;	
+		intensityRaster[x + y*screenW] += unsigned(brightness);
+		
+		//intensityRaster[i%(100*1000)] += i;
+		}
+}
+
+} //namespace cuda_renderer ends
+
+
+void CallMovingPointsRenderer(		
+		Camera cam,
+		float* mpData,		
+		SMpBufDesc* bufDesc,		
+		int bufN,
+		unsigned* intensityRaster,
+		int screenW, int screenH,
+		unsigned curtime,
+		float brightnessMultiplier,
+		float lengthMultiplier
+		)				
+{
+	dim3 block(64);
+	dim3 grid((unsigned int)ceil(threadN/(float)block.x));	
+	
+	if (bufN<1) return;
+	
+	cuda_renderer::MovingPointsRenderer<<<grid, block>>>(
+		cam,
+		mpData,
+		0,
+		bufDesc,		
+		bufN,
+		intensityRaster,
+		screenW, screenH,
+		curtime,
+		brightnessMultiplier,
+		lengthMultiplier
+		);
+}
+
+
