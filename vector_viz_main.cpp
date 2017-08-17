@@ -57,7 +57,7 @@ const char* programName = "VectorViz v1.00";
 	int screenH = 768;
 #endif
 
-SDL_Surface* display;
+SDL_Window* display;
 SDL_Surface* screen;
 
 const uint8_t* GetGlyphBmp(int c);
@@ -800,12 +800,8 @@ void DrawSDL()
 		
 	DrawFps(screenW-585,24);
 	
-	if (display->flags & SDL_HWSURFACE) 
-		{		
-		SDL_BlitSurface(screen,NULL,display,NULL);							
-		}	
 		
-	SDL_Flip(display);		
+	SDL_UpdateWindowSurface(display);
 	cudaMemcpy(cudaMem.mpData+curMpBufDescCuda.beg, &separatedMp[0], newMpN*sizeof(MovingPoint), cudaMemcpyHostToDevice);		
 	cudaMemcpy(cudaMem.mpBufDesc, &mpBufDescCuda[0], mpBufDescCuda.size()*sizeof(SMpBufDesc), cudaMemcpyHostToDevice);					
 	ClearIntensityRasterCuda();		
@@ -957,22 +953,33 @@ void EventLoop()
 		if (!isEvent) 
 			continue;
 		switch(event.type){
-			case SDL_VIDEOEXPOSE:
-				isDrawReq=true;
-				break;
-			case SDL_ACTIVEEVENT:
-				//printf("Active EVENT  state: %d   gain: %d\n", event.active.state, event.active.gain);				
-				if (event.active.gain && !ps.sys.isActive && event.active.state!=SDL_APPMOUSEFOCUS ){										
-					SDL_WM_GrabInput(SDL_GRAB_ON);					
-					SDL_ShowCursor(0);
-					noRedrawTimer.Reset();
-					ps.sys.isActive=true;					
-					}
-				if (!event.active.gain && ps.sys.isActive && event.active.state!=SDL_APPMOUSEFOCUS ){
-					SDL_WM_GrabInput(SDL_GRAB_OFF);
-					SDL_ShowCursor(1);
-					ps.sys.isActive=false;
-					}
+			case SDL_WINDOWEVENT:
+				switch(event.window.event){
+					case SDL_WINDOWEVENT_RESIZED:
+						SDL_GetWindowSize(display, &screenW, &screenH);
+						screen = SDL_GetWindowSurface(display);
+						break;
+					case SDL_WINDOWEVENT_EXPOSED:
+					case SDL_WINDOWEVENT_SHOWN:
+						isDrawReq=true;
+						break;
+					case SDL_WINDOWEVENT_RESTORED:
+						if (!ps.sys.isActive){
+							SDL_SetWindowGrab(display, SDL_TRUE);
+							SDL_ShowCursor(0);
+							noRedrawTimer.Reset();
+							ps.sys.isActive=true;
+						}
+						break;
+					case SDL_WINDOWEVENT_MINIMIZED:
+						if (ps.sys.isActive){
+							SDL_SetWindowGrab(display, SDL_FALSE);
+							SDL_ShowCursor(1);
+							ps.sys.isActive=false;
+						}
+
+						break;
+				}
 				break;
 			case SDL_QUIT: 
 				ps.sys.isQuit = true;
@@ -1013,7 +1020,7 @@ void EventLoop()
 					ps.sys.isQuit = true;
 					break;
 					}
-				if (sym==SDLK_KP0){
+				if (sym==SDLK_KP_0){
 					cameraArrange.centerTranslation = Vec(0,0,0);
 					}
 				if (sym==SDLK_LEFT){
@@ -1051,19 +1058,19 @@ void EventLoop()
 					ps.sys.isKeyEndPressed=true;
 					ps.pressKeyEndTime.Reset();
 					}
-				if (sym==SDLK_KP6){
+				if (sym==SDLK_KP_6){
 					ps.sys.isKeyPadRight=true;
 					ps.pressKeyPadRightTime.Reset();
 					}  
-				if (sym==SDLK_KP4)  {
+				if (sym==SDLK_KP_4)  {
 					ps.sys.isKeyPadLeft=true;
 					ps.pressKeyPadLeftTime.Reset();
 					}    
-				if (sym==SDLK_KP5) {
+				if (sym==SDLK_KP_5) {
 					ps.sys.isKeyPadDown=true;
 					ps.pressKeyPadDownTime.Reset();
 					}  
-				if (sym==SDLK_KP8){
+				if (sym==SDLK_KP_8){
 					ps.sys.isKeyPadUp=true;
 					ps.pressKeyPadUpTime.Reset();
 					}
@@ -1105,19 +1112,19 @@ void EventLoop()
 				if (sym==SDLK_END) {
 					ps.sys.isKeyEndPressed=false;
 					}
-				if (sym==SDLK_KP6){					
+				if (sym==SDLK_KP_6){
 					ps.sys.isKeyPadRight=false;
 					}  
-				if (sym==SDLK_KP4)  {	
-					ps.sys.isKeyPadLeft=false;				
-					}    
-				if (sym==SDLK_KP5) {					
+				if (sym==SDLK_KP_4)  {
+					ps.sys.isKeyPadLeft=false;
+					}
+				if (sym==SDLK_KP_5) {
 					ps.sys.isKeyPadDown=false;
-					}  
-				if (sym==SDLK_KP8){		
+					}
+				if (sym==SDLK_KP_8){
 					ps.sys.isKeyPadUp=false;			
 					}
-				if (sym==SDLK_PRINT){		
+				if (sym==SDLK_PRINTSCREEN){
 					ps.isScreenshotRequest=true;
 					}					
 				break;				
@@ -1268,12 +1275,17 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Unable to initialize SDL: %s\n", SDL_GetError());
 		return 1;
 		}
-	
-	
+
+
 #if ( /*!defined(_DEBUG) && defined(WIN32)) || */ defined(FULLSCREEN) )
-	display = SDL_SetVideoMode(0, 0, 0,  SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_FULLSCREEN );
+	SDL_DisplayMode current;
+	SDL_GetCurrentDisplayMode(0, &current);
+	screenW = current.w;
+	screenH = current.h;
+
+	display = SDL_CreateWindow(programName, 100, 100, screenW, screenH, SDL_WINDOW_FULLSCREEN | SDL_WINDOW_INPUT_GRABBED);
 #else
-	display = SDL_SetVideoMode(screenW, screenH, 32, SDL_HWSURFACE | SDL_DOUBLEBUF /*| SDL_FULLSCREEN*/ );
+	display = SDL_CreateWindow(programName, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, screenW, screenH, SDL_WINDOW_INPUT_GRABBED);
 #endif	
 
 	if ( display == NULL ) {
@@ -1282,22 +1294,8 @@ int main(int argc, char **argv)
 		return 2;
 		}	
 	
-	screenW = display->w;
-	screenH = display->h;
-	
-	if (display->flags & SDL_HWSURFACE) 
-		{
-		SDL_Surface* drawSurface = SDL_CreateRGBSurface(SDL_SWSURFACE,screenW,screenH,32,0,0,0,0);
-		if ( drawSurface == NULL ) {
-			fprintf(stderr, "Unable to create RGB surface: %s\n", SDL_GetError());
-			SDL_Quit();
-			return 3;
-			}
-		screen = drawSurface;
-		}
-	else{
-		screen = SDL_GetVideoSurface();				
-		}		
+	SDL_GetWindowSize(display, &screenW, &screenH);
+	screen = SDL_GetWindowSurface(display);
 		
 	intRaster.pix=(unsigned*)malloc(screenW*screenH*sizeof(unsigned));
 	intRaster.sizeX=screenW;
@@ -1308,9 +1306,7 @@ int main(int argc, char **argv)
 		return 3;
 		}
 	
-	SDL_WM_SetCaption(programName, NULL);
 	SDL_ShowCursor(0);
-	SDL_WM_GrabInput(SDL_GRAB_ON);
 	
 	SetupGammaPre();
 	
@@ -1330,7 +1326,7 @@ int main(int argc, char **argv)
 	// Loop, drawing and checking events 
 	EventLoop();      
 	  	
-	SDL_WM_GrabInput(SDL_GRAB_OFF);
+	SDL_SetWindowGrab(display, SDL_FALSE);
 	SDL_ShowCursor(1);
 	
 	SDL_Quit();
