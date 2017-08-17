@@ -1,6 +1,6 @@
 To compile the program, use the following command:
 
-nvcc -O2 -o vector_viz `sdl-config --libs` vector_viz_main.cpp fontMono_24.cpp mp_renderer.cu `sdl-config --cflags` 
+nvcc -O2 -o vector_viz `sdl2-config --libs` vector_viz_main.cpp fontMono_24.cpp mp_renderer.cu `sdl2-config --cflags`
 
 - To move around, use the mouse, mouse buttons and cursor keys. Use the cursor keys to center the screen on the point of interest, and then zoom in with left mouse button. Rotate the camera around the point of interest to make the 3D effect more easily perceptible.
 
