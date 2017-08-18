@@ -1,8 +1,10 @@
 #define _CRT_SECURE_NO_WARNINGS
+#include <algorithm>
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string>
 #include <time.h>
 #include <SDL.h>
 #include <vector>
@@ -22,15 +24,26 @@ const unsigned cMaxDotsPerLine = 30;
 const float cBrightnessMin = 0.2f;
 const float cBrightnessMax = 900.0f;
 const float cBrightnessStep = 0.003f;
-const float cBrightnessInit = 100.0f;
 
 const float cLengthMin = 2.0f;
 const float cLengthMax = 900.0f;
 const float cLengthStep = 0.003f;
-const float cLengthinit = 100.0f;
 
 const int cudaMaxPoints = 24*1000*1000;
-const int cInitialDotDensity = -2;
+
+float rotLRInit = 0;
+float rotUDInit = -20;
+float distInit = 150;
+float centerXInit = 0;
+float centerYInit = 0;
+float centerZInit = 0;
+float brightnessInit = 100.0f;
+float lengthInit = 100.0f;
+int initialDotDensity = -2;
+int timeToSimulate = 0;
+
+char *dumpFilename = NULL;
+bool showParams = false;
 
 const char* programName = "VectorViz v1.00";
 
@@ -127,7 +140,7 @@ inline Vec VecSub(Vec a, Vec b) {
 }
 inline  float DotProduct(Vec A, Vec B) { 
 	return A.x*B.x + A.y*B.y + A.z*B.z;
-    }
+		}
 inline float VecLen(Vec a) { 
 	return sqrt(DotProduct(a,a));
 	}
@@ -689,8 +702,13 @@ int CreateMovingPoints(Camera cam, int processPointsCount)
 	return createdMpI;
 }
 
-void SaveScreenshot()
-{	
+void SaveScreenshot(char *filename)
+{
+	if(filename){
+		SDL_SaveBMP(screen, filename);
+		return;
+	}
+
 	static int cnt=0;
 	cnt++;
 	
@@ -790,13 +808,38 @@ void DrawSDL()
 	DrawString(screenW-314,24," Exposure: %5.1f  Home/E ", ps.exposure);
 	DrawString(screenW-314,48," CamDist : %5.1f  Num5/8 ", cameraArrange.dist);
 	DrawString(screenW-236,72," Auto Adjust %s m ", ps.isAutoAdjust? "ON " : "OFF");
+
+	if (showParams){
+		DrawString(0, 24,"centerX: %2.1f", cameraArrange.centerTranslation.x);
+		DrawString(0, 48,"centerY: %2.1f", cameraArrange.centerTranslation.y);
+		DrawString(0, 72,"centerZ: %2.1f", cameraArrange.centerTranslation.z);
+		DrawString(0, 96,"distance: %2.1f", cameraArrange.dist);
+		DrawString(0, 120,"rotLR: %2.1f", cameraArrange.rotLR);
+		DrawString(0, 144,"rotUD: %2.1f", cameraArrange.rotUD);
+		DrawString(0, 168,"exposure: %2.1f", ps.exposure);
+		DrawString(0, 192,"length: %2.1f", ps.length);
+		DrawString(0, 216,"intensity: %d", ps.pointCntExp);
+		DrawString(0, 240,"time: %d", ps.curTime);
+
+		fprintf(stdout, "centerX: %2.1f\n", cameraArrange.centerTranslation.x);
+		fprintf(stdout, "centerY: %2.1f\n", cameraArrange.centerTranslation.y);
+		fprintf(stdout, "centerZ: %2.1f\n", cameraArrange.centerTranslation.z);
+		fprintf(stdout, "distance: %2.1f\n", cameraArrange.dist);
+		fprintf(stdout, "rotLR: %2.1f\n", cameraArrange.rotLR);
+		fprintf(stdout, "rotUD: %2.1f\n", cameraArrange.rotUD);
+		fprintf(stdout, "exposure: %2.1f\n", ps.exposure);
+		fprintf(stdout, "length: %2.1f\n", ps.length);
+		fprintf(stdout, "intensity: %d\n", ps.pointCntExp);
+		fprintf(stdout, "time: %d\n", ps.curTime);
+	}
+
 	
 	
 	if (ps.isScreenshotRequest) {
-		void SaveScreenshot();
-		SaveScreenshot();
+		void SaveScreenshot(char *filename);
+		SaveScreenshot(NULL);
 		ps.isScreenshotRequest=false;		
-		}
+	}
 		
 	DrawFps(screenW-585,24);
 	
@@ -804,7 +847,15 @@ void DrawSDL()
 	SDL_UpdateWindowSurface(display);
 	cudaMemcpy(cudaMem.mpData+curMpBufDescCuda.beg, &separatedMp[0], newMpN*sizeof(MovingPoint), cudaMemcpyHostToDevice);		
 	cudaMemcpy(cudaMem.mpBufDesc, &mpBufDescCuda[0], mpBufDescCuda.size()*sizeof(SMpBufDesc), cudaMemcpyHostToDevice);					
-	ClearIntensityRasterCuda();		
+	ClearIntensityRasterCuda();
+
+
+	if (dumpFilename){
+		if (ps.curTime >= timeToSimulate){
+			SaveScreenshot(dumpFilename);
+			exit(0);
+		}
+	}
 }
 
 void EventLoop()
@@ -878,7 +929,7 @@ void EventLoop()
 			ps.pressKeyPadDownTime.Reset();
 			isDrawReq=true;
 			}
-		if (ps.isAutoAdjust){
+		if (ps.isAutoAdjust && !dumpFilename){
 			float changeFactor = cameraArrange.dist/prevDist;
 			ps.length *= sqrtf(changeFactor);
 			ps.exposure *= sqrtf(changeFactor);
@@ -984,7 +1035,8 @@ void EventLoop()
 			case SDL_QUIT: 
 				ps.sys.isQuit = true;
 				break;							
-			case SDL_MOUSEMOTION:			    
+			case SDL_MOUSEMOTION:
+				if (dumpFilename) break;
 				if(!ps.sys.isActive) break;
 				if (noRedrawTimer.Get()>50) {
 					cameraArrange.rotLR+=event.motion.xrel*0.05f;
@@ -1138,14 +1190,14 @@ void Init()
 	createdMp.resize(ps.nx*ps.ny*3);	
 	separatedMp.resize(ps.nx*ps.ny*3*sizeof(MovingPoint)/sizeof(float));
 	
-	cameraArrange.rotLR=0;
-	cameraArrange.rotUD=-20;	
-	cameraArrange.dist=150;
-	cameraArrange.centerTranslation=Vec(0,0,0);		
+	cameraArrange.rotLR = rotLRInit;
+	cameraArrange.rotUD = rotUDInit;
+	cameraArrange.dist = distInit;
+	cameraArrange.centerTranslation = Vec(centerXInit, centerYInit, centerZInit);
 	
-	ps.exposure = cBrightnessInit;
-	ps.length = cLengthinit;	
-	ps.pointCntExp = cInitialDotDensity;
+	ps.exposure = brightnessInit;
+	ps.length = lengthInit;	
+	ps.pointCntExp = initialDotDensity;
 	ps.isAutoAdjust=true;
 		
 	//calculate maximum number of miliseconds between dots of a vector
@@ -1163,9 +1215,11 @@ void Init()
 		sumBrightness += gridVector[i].dotBrightness;
 	ps.totalBrightness = float(sumBrightness)/(screenW*screenW);
 	
-	//reduce initial exposure on small grids
-	if ( sqrt(1.0*ps.nx*ps.ny)<700 )
-		ps.exposure *= float(sqrt(1.0*ps.nx*ps.ny)/700);
+	if (!dumpFilename){
+		//reduce initial exposure on small grids
+		if ( sqrt(1.0*ps.nx*ps.ny)<700 )
+			ps.exposure *= float(sqrt(1.0*ps.nx*ps.ny)/700);
+	}
 		
 	ps.sys.isActive=true;
 	ps.sys.isQuit=false;
@@ -1227,6 +1281,19 @@ int InitCuda()
 	return 0;
 }
 
+char *GetCmdOption(char **begin, char **end, const std::string &option)
+{
+	char **iFind = std::find(begin, end, option);
+	if (iFind != end && ++iFind != end){
+		return *iFind;
+	}
+	return 0;
+}
+
+bool CmdOptionExists(char **begin, char **end, const std::string &option)
+{
+	return std::find(begin, end, option) != end;
+}
 
 int main(int argc, char **argv) 
 {  		
@@ -1238,6 +1305,8 @@ int main(int argc, char **argv)
 			printf("Usage:\n");
 			printf("\tvector_viz  inputFile\n");
 			printf("\tvector_viz  inputFile.vvt  -c  convertedFile.vvf\n");			
+			printf("\tvector_viz  inputFile -params\n");
+			printf("\tvector_viz  inputFile -centerX <val> -centerY <val> -centerZ <val> -rotLR <val> -rotUD <val> -distance <val> -exposure <val> -length <val> -intensity <val> -time <val> -dump <filename.bmp>\n");
 			return 0;
 		#endif		
 		}
@@ -1249,25 +1318,84 @@ int main(int argc, char **argv)
 		fprintf(stdout,"Error opening input file: %s\n", inFileName);		
 		return 1;
 		}	
-	
-	if (argc>2) { //convert file format mode
-		if (argc!=4) {
-			printf("Invalid number of arguments\n");
-			return 10;
-			}
-		if (strcmp(argv[2],"-c")){
-			printf("Third argument must be -c\n");
-			return 11;
-			}
-		bool isOk=ReadInputFile(inFileName);
-		if (!isOk) {
-			fprintf(stdout,"Error opening input file: %s\n", inFileName);			
+
+
+
+	if(CmdOptionExists(argv, argv + argc, "-c")){
+		char *outFilename = GetCmdOption(argv, argv + argc, "-c");
+		if(outFilename){
+			bool isOk=ReadInputFile(inFileName);
+			if (!isOk) {
+				fprintf(stdout,"Error opening input file: %s\n", inFileName);
+				return 1;
+				}
+			SaveVvfFile(outFilename);
+			return 0;
+		}
+		else{
+			fprintf(stdout,"Please specify output filename\n");
 			return 1;
-			}		
-		SaveVvfFile(argv[3]);
-		return 0;
-		}		 
-		
+		}
+	}
+
+	char *centerX      = GetCmdOption(argv, argv + argc, "-centerX");
+	char *centerY      = GetCmdOption(argv, argv + argc, "-centerY");
+	char *centerZ      = GetCmdOption(argv, argv + argc, "-centerZ");
+	char *rotLR        = GetCmdOption(argv, argv + argc, "-rotLR");
+	char *rotUD        = GetCmdOption(argv, argv + argc, "-rotUD");
+	char *distance     = GetCmdOption(argv, argv + argc, "-distance");
+	char *exposure     = GetCmdOption(argv, argv + argc, "-exposure");
+	char *length       = GetCmdOption(argv, argv + argc, "-length");
+	char *intensity    = GetCmdOption(argv, argv + argc, "-intensity");
+	char *time         = GetCmdOption(argv, argv + argc, "-time");
+	char *dump         = GetCmdOption(argv, argv + argc, "-dump");
+
+	showParams = CmdOptionExists(argv, argv + argc, "-params");
+
+	if (centerX){
+		centerXInit = atof(centerX);
+	}
+
+	if (centerY){
+		centerYInit = atof(centerY);
+	}
+
+	if (centerZ){
+		centerZInit = atof(centerZ);
+	}
+
+	if (rotLR){
+		rotLRInit = atof(rotLR);
+	}
+
+	if (rotUD){
+		rotUDInit = atof(rotUD);
+	}
+
+	if (distance){
+		distInit = atof(distance);
+	}
+
+	if (exposure){
+		brightnessInit = atof(exposure);
+	}
+
+	if (length){
+		lengthInit = atof(length);
+	}
+
+	if (intensity){
+		initialDotDensity = atof(intensity);
+	}
+
+	if (time){
+		timeToSimulate = atoi(time);
+	}
+
+	if (dump){
+		dumpFilename = strdup(dump);
+	}
+
 	//SDL_putenv("SDL_VIDEODRIVER=directx");
 	//SDL_putenv("SDL_VIDEODRIVER=dga");
 	
