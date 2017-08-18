@@ -804,8 +804,8 @@ void DrawSDL()
 	DrawString(-4,24," %d x %d", ps.nx, ps.ny);
 		
 	DrawString(screenW-585, 0," Density: %3d  o/p   ", ps.pointCntExp);	
-	DrawString(screenW-314, 0," Length  : %5.1f   pgU/D ", ps.length);
-	DrawString(screenW-314,24," Exposure: %5.1f  Home/E ", ps.exposure);
+	DrawString(screenW-314, 0," Length  : %5.1f     a/d ", ps.length);
+	DrawString(screenW-314,24," Exposure: %5.1f     w/s ", ps.exposure);
 	DrawString(screenW-314,48," CamDist : %5.1f  Num5/8 ", cameraArrange.dist);
 	DrawString(screenW-236,72," Auto Adjust %s m ", ps.isAutoAdjust? "ON " : "OFF");
 
@@ -1094,19 +1094,19 @@ void EventLoop()
 				if (sym==SDLK_SPACE){
 					ps.isPaused=!ps.isPaused;					
 					}
-				if (sym==SDLK_PAGEUP){
+				if (sym==SDLK_w){
 					ps.sys.isKeyPgUpPressed=true;
 					ps.pressKeyPgUpTime.Reset();
 					}
-				if (sym==SDLK_PAGEDOWN){
+				if (sym==SDLK_s){
 					ps.sys.isKeyPgDnPressed=true;
 					ps.pressKeyPgDnTime.Reset();
 					}
-				if (sym==SDLK_HOME){
+				if (sym==SDLK_d){
 					ps.sys.isKeyHomePressed=true;
 					ps.pressKeyHomeTime.Reset();
 					}
-				if (sym==SDLK_END){
+				if (sym==SDLK_a){
 					ps.sys.isKeyEndPressed=true;
 					ps.pressKeyEndTime.Reset();
 					}
@@ -1152,16 +1152,16 @@ void EventLoop()
 				if (sym==SDLK_RIGHT){
 					ps.sys.isKeyRightPressed=false;					
 					}
-				if (sym==SDLK_PAGEUP) {
+				if (sym==SDLK_w) {
 					ps.sys.isKeyPgUpPressed=false;				
 					}  
-				if (sym==SDLK_PAGEDOWN) {
+				if (sym==SDLK_s) {
 					ps.sys.isKeyPgDnPressed=false;				
 					}
-				if (sym==SDLK_HOME) {
+				if (sym==SDLK_d) {
 					ps.sys.isKeyHomePressed=false;				
 					}
-				if (sym==SDLK_END) {
+				if (sym==SDLK_a) {
 					ps.sys.isKeyEndPressed=false;
 					}
 				if (sym==SDLK_KP_6){
