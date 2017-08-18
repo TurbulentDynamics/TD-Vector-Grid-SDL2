@@ -29,6 +29,7 @@
 *.dylib
 
 # Executables
+vector-viz
 *.exe
 *.out
 *.app
