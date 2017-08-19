@@ -74,6 +74,18 @@ const char* programName = "VectorViz v1.00";
 SDL_Window* display;
 SDL_Surface* screen;
 
+#if SDL_BYTEORDER == SDL_BIG_ENDIAN
+	Uint32 rmask = 0xff000000;
+	Uint32 gmask = 0x00ff0000;
+	Uint32 bmask = 0x0000ff00;
+	Uint32 amask = 0x000000ff;
+#else
+	Uint32 rmask = 0x000000ff;
+	Uint32 gmask = 0x0000ff00;
+	Uint32 bmask = 0x00ff0000;
+	Uint32 amask = 0xff000000;
+#endif
+
 const uint8_t* GetGlyphBmp(int c);
 int GetGlyphPitch();
 int GetGlyphWidth();
@@ -705,24 +717,33 @@ int CreateMovingPoints(Camera cam, int processPointsCount)
 
 void SaveScreenshot(char *filename)
 {
-	if(filename){
-		SDL_SaveBMP(screen, filename);
-		return;
-	}
+	SDL_Rect rect;
+	rect.x = rect.y = 0;
+	rect.w = screenW;
+	rect.h = screenH;
 
-	static int cnt=0;
-	cnt++;
+	SDL_Surface* screen24 = SDL_CreateRGBSurface(0, screenW, screenH, 24, rmask, gmask, bmask, 0);
+	SDL_BlitSurface(screen, &rect, screen24, &rect);
+
+	if(filename){
+		SDL_SaveBMP(screen24, filename);
+	}
+	else{
+		static int cnt=0;
+		cnt++;
+
+		time_t rawtime;
+		time ( &rawtime );
+		struct tm * timeinfo;
+		timeinfo = localtime(&rawtime);
+		char outFileName[100];
 	
-	time_t rawtime;
-	time ( &rawtime );	
-	struct tm * timeinfo;	
-	timeinfo = localtime(&rawtime);
-	char outFileName[100];
-	
-	sprintf(outFileName,"vv_capture_%02d%02d%02d-%02d%02d_%03d.bmp", 
+		sprintf(outFileName,"vv_capture_%02d%02d%02d-%02d%02d_%03d.bmp",
 		timeinfo->tm_year % 100, timeinfo->tm_mon+1, timeinfo->tm_mday,
 		timeinfo->tm_hour,timeinfo->tm_min, cnt );    
-	SDL_SaveBMP(screen, outFileName);
+		SDL_SaveBMP(screen24, outFileName);
+	}
+	SDL_FreeSurface(screen24);
 }
 
 void SeparateMovingPoints(int n)
@@ -1437,22 +1458,10 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Unable to set video mode: %s\n", SDL_GetError());
 		SDL_Quit();
 		return 2;
-		}	
+	}
 
 	if (offScreen){
-		Uint32 rmask, gmask, bmask, amask;
-  #if SDL_BYTEORDER == SDL_BIG_ENDIAN
-		rmask = 0xff000000;
-		gmask = 0x00ff0000;
-		bmask = 0x0000ff00;
-		amask = 0x000000ff;
- #else
-		rmask = 0x000000ff;
-		gmask = 0x0000ff00;
-		bmask = 0x00ff0000;
-		amask = 0xff000000;
- #endif
-		screen = SDL_CreateRGBSurface(0, screenW, screenH, 32, rmask, gmask, bmask, amask);
+		screen   = SDL_CreateRGBSurface(0, screenW, screenH, 32, rmask, gmask, bmask, 0);
 	}
 	else{
 		SDL_GetWindowSize(display, &screenW, &screenH);
