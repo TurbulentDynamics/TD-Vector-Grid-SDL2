@@ -44,6 +44,7 @@ int timeToSimulate = 0;
 
 char *dumpFilename = NULL;
 bool showParams = false;
+bool offScreen = false;
 
 const char* programName = "VectorViz v1.00";
 
@@ -1307,6 +1308,7 @@ int main(int argc, char **argv)
 			printf("\tvector_viz  inputFile.vvt  -c  convertedFile.vvf\n");			
 			printf("\tvector_viz  inputFile -params\n");
 			printf("\tvector_viz  inputFile -centerX <val> -centerY <val> -centerZ <val> -rotLR <val> -rotUD <val> -distance <val> -exposure <val> -length <val> -intensity <val> -time <val> -dump <filename.bmp>\n");
+			printf("\tvector_viz  inputFile -offscreen -w <val> -h <val>\n");
 			return 0;
 		#endif		
 		}
@@ -1351,6 +1353,20 @@ int main(int argc, char **argv)
 	char *dump         = GetCmdOption(argv, argv + argc, "-dump");
 
 	showParams = CmdOptionExists(argv, argv + argc, "-params");
+	offScreen  = CmdOptionExists(argv, argv + argc, "-offscreen");
+
+	if (offScreen){
+		if (CmdOptionExists(argv, argv + argc, "-w") && CmdOptionExists(argv, argv + argc, "-h")){
+			char *w = GetCmdOption(argv, argv + argc, "-w");
+			char *h = GetCmdOption(argv, argv + argc, "-h");
+			screenW = atoi(w);
+			screenH = atoi(h);
+		}
+		else{
+			fprintf(stdout,"Please specify render resolution using -w and -h\n");
+			return 1;
+		}
+	}
 
 	if (centerX){
 		centerXInit = atof(centerX);
@@ -1399,31 +1415,49 @@ int main(int argc, char **argv)
 	//SDL_putenv("SDL_VIDEODRIVER=directx");
 	//SDL_putenv("SDL_VIDEODRIVER=dga");
 	
-	if ( SDL_Init(SDL_INIT_VIDEO) < 0 ) {
+	if ( SDL_Init(offScreen ? 0 : SDL_INIT_VIDEO) < 0 ) {
 		fprintf(stderr, "Unable to initialize SDL: %s\n", SDL_GetError());
 		return 1;
 		}
 
 
 #if ( /*!defined(_DEBUG) && defined(WIN32)) || */ defined(FULLSCREEN) )
-	SDL_DisplayMode current;
-	SDL_GetCurrentDisplayMode(0, &current);
-	screenW = current.w;
-	screenH = current.h;
-
-	display = SDL_CreateWindow(programName, 100, 100, screenW, screenH, SDL_WINDOW_FULLSCREEN | SDL_WINDOW_INPUT_GRABBED);
+	if (!offScreen){
+		SDL_DisplayMode current;
+		SDL_GetCurrentDisplayMode(0, &current);
+		screenW = current.w;
+		screenH = current.h;
+		display = SDL_CreateWindow(programName, 100, 100, screenW, screenH, SDL_WINDOW_FULLSCREEN | SDL_WINDOW_INPUT_GRABBED);
 #else
-	display = SDL_CreateWindow(programName, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, screenW, screenH, SDL_WINDOW_INPUT_GRABBED);
-#endif	
+		display = SDL_CreateWindow(programName, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, screenW, screenH, SDL_WINDOW_INPUT_GRABBED);
+#endif
+	}
 
-	if ( display == NULL ) {
+	if ( !offScreen && display == NULL ) {
 		fprintf(stderr, "Unable to set video mode: %s\n", SDL_GetError());
 		SDL_Quit();
 		return 2;
 		}	
-	
-	SDL_GetWindowSize(display, &screenW, &screenH);
-	screen = SDL_GetWindowSurface(display);
+
+	if (offScreen){
+		Uint32 rmask, gmask, bmask, amask;
+  #if SDL_BYTEORDER == SDL_BIG_ENDIAN
+		rmask = 0xff000000;
+		gmask = 0x00ff0000;
+		bmask = 0x0000ff00;
+		amask = 0x000000ff;
+ #else
+		rmask = 0x000000ff;
+		gmask = 0x0000ff00;
+		bmask = 0x00ff0000;
+		amask = 0xff000000;
+ #endif
+		screen = SDL_CreateRGBSurface(0, screenW, screenH, 32, rmask, gmask, bmask, amask);
+	}
+	else{
+		SDL_GetWindowSize(display, &screenW, &screenH);
+		screen = SDL_GetWindowSurface(display);
+	}
 		
 	intRaster.pix=(unsigned*)malloc(screenW*screenH*sizeof(unsigned));
 	intRaster.sizeX=screenW;
