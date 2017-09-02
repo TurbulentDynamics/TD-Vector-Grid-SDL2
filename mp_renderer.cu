@@ -55,12 +55,30 @@ Vec VecUnit(Vec a)
 	return VecMul(a, 1.0f/VecLen(a));
 }
 
+__device__
+inline Vec lerp(Vec v0, Vec v1, float t)
+{
+    return VecAdd(VecMul(v0, (1-t)), VecMul(v1, t));
+}
+
 struct PointProjection
 {
 	float x;
 	float y;
 	float zdistRec;
 };
+
+__device__ float rainbow[][3] =
+{
+  { 1.0f, 0.0f, 0.0f },
+  { 1.0f, 1.0f, 0.0f },
+  { 0.0f, 1.0f, 0.0f },
+  { 0.0f, 1.0f, 1.0f },
+  { 0.0f, 0.0f, 1.0f },
+  { 1.0f, 0.0f, 1.0f },
+};
+
+
 
 __device__
 PointProjection PerspProj(Vec t, Camera k)
@@ -92,7 +110,8 @@ void MovingPointsRenderer(
 		int screenW, int screenH,
 		unsigned curtime,
 		float brightnessMultiplier,
-		float lengthMultiplier
+		float lengthMultiplier,
+		float maxLength
 		)				
 {		
 	const unsigned idx = blockIdx.x*blockDim.x + threadIdx.x;	
@@ -137,7 +156,17 @@ void MovingPointsRenderer(
 		
 		if (x<0 || x>=screenW) continue;
 		if (y<0 || y>=screenH) continue;	
-		intensityRaster[x + y*screenW] += unsigned(brightness);
+		int dstIndex = (x + y*screenW) * 3;
+		float len = min(VecLen(v) / maxLength * 4, 4.f);
+		int rainbowIndex = (int)len;
+		float fade = len - rainbowIndex;
+		Vec colorFrom = Vec(rainbow[rainbowIndex][0], rainbow[rainbowIndex][1], rainbow[rainbowIndex][2]);
+		Vec colorTo = Vec(rainbow[rainbowIndex + 1][0], rainbow[rainbowIndex + 1][1], rainbow[rainbowIndex + 1][2]);
+		Vec color = lerp(colorFrom, colorTo, fade);
+
+		intensityRaster[dstIndex]     += unsigned(brightness * color.x);
+		intensityRaster[dstIndex + 1] += unsigned(brightness * color.y);
+		intensityRaster[dstIndex + 2] += unsigned(brightness * color.z);
 		
 		//intensityRaster[i%(100*1000)] += i;
 		}
@@ -155,7 +184,8 @@ void CallMovingPointsRenderer(
 		int screenW, int screenH,
 		unsigned curtime,
 		float brightnessMultiplier,
-		float lengthMultiplier
+		float lengthMultiplier,
+		float maxLength
 		)				
 {
 	dim3 block(64);
@@ -173,7 +203,8 @@ void CallMovingPointsRenderer(
 		screenW, screenH,
 		curtime,
 		brightnessMultiplier,
-		lengthMultiplier
+		lengthMultiplier,
+		maxLength
 		);
 }
 

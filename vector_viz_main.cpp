@@ -39,6 +39,7 @@ float centerYInit = 0;
 float centerZInit = 0;
 float brightnessInit = 100.0f;
 float lengthInit = 100.0f;
+float maxLength = 0;
 int initialDotDensity = -2;
 int timeToSimulate = 0;
 
@@ -294,9 +295,6 @@ void SetupGammaPre(){
 		gammaPre.push_back( GammaLinearToColorSRGB(midVal) );
 		}
 	gammaPre.push_back( 255 );
-
-	for (int i=0;i<int(gammaPre.size());i++)
-		gammaPre[i]=gammaPre[i]*(65536+256+1);
 	}
 
 struct SSys
@@ -500,6 +498,7 @@ bool ReadInputFile(const char* inFileName)
 			int ignore = fscanf(inFile,"%f%f%f%f",&u,&x,&y,&z);
 			gridVector[i].v = Vec( y, -x, z);
 			gridVector[i].indices= (yi<<16)+xi;
+			maxLength = std::max(maxLength, VecLen(gridVector[i].v));
 			}	
 	
 	fclose(inFile);
@@ -591,13 +590,13 @@ void DrawString(int x, int y, const char* format, ...)
 
 void ClearIntensityRaster()
 {
-	for (int i=0;i<intRaster.sizeX*intRaster.sizeY;i++)
+	for (int i=0;i<intRaster.sizeX*intRaster.sizeY*3;i++)
 		intRaster.pix[i]=0;
 }
 
 void ClearIntensityRasterCuda()
 {
-	cudaMemset(cudaMem.intensityRaster,0,screenW*screenH*sizeof(unsigned) );
+	cudaMemset(cudaMem.intensityRaster,0,screenW*screenH*sizeof(unsigned)*3 );
 }
 
 void RenderIntensityRaster()
@@ -607,12 +606,17 @@ void RenderIntensityRaster()
 	
 	for (int j=0; j<intRaster.sizeY;j++)
 		for (int i=0;i<intRaster.sizeX;i++){
-			unsigned intensity = intRaster.pix[i + j*intRaster.sizeX];						
-			unsigned col=unsigned(intensity);								
-			if (col>gammaPreSize) col=gammaPreSize;							
+			int srcIndex = (i + j*intRaster.sizeX) * 3;
+			unsigned intensityR = intRaster.pix[srcIndex];
+			unsigned intensityG = intRaster.pix[srcIndex + 1];
+			unsigned intensityB = intRaster.pix[srcIndex + 2];
 	
-			ptr[i+j*pitch]=gammaPre[col];
-			}
+			ptr[i+j*pitch]=
+				(gammaPre[std::min(intensityR, gammaPreSize)] * (rmask & 0x01010101)) +
+				(gammaPre[std::min(intensityG, gammaPreSize)] * (gmask & 0x01010101)) +
+				(gammaPre[std::min(intensityB, gammaPreSize)] * (bmask & 0x01010101)) +
+				amask;
+		}
 }
 
 void DrawFps(int x, int y)
@@ -777,7 +781,8 @@ void DrawSDL()
 		screenW, screenH,
 		ps.curTime,
 		ps.exposure/ps.totalBrightness*cBrightnessMultiplier,
-		ps.length*cLengthMultiplier		
+		ps.length*cLengthMultiplier,
+		maxLength
 		);	
 	cudaStreamQuery(0);
 	
@@ -817,7 +822,7 @@ void DrawSDL()
 	while (ps.curTime - mpBufDescCuda[0].startTime > 4000)
 		mpBufDescCuda.erase(mpBufDescCuda.begin() );			
 	
-	cudaMemcpy(intRaster.pix, cudaMem.intensityRaster, screenW*screenH*sizeof(unsigned), cudaMemcpyDeviceToHost);
+	cudaMemcpy(intRaster.pix, cudaMem.intensityRaster, screenW*screenH*sizeof(unsigned)*3, cudaMemcpyDeviceToHost);
 	int kerTime=ktm.Get();	
 	
 	RenderIntensityRaster();
@@ -1284,7 +1289,7 @@ int InitCuda()
 		return -1;
 		}	
 	
-	cudaError=cudaMalloc((void**)&cudaMem.intensityRaster, screenW*screenH*sizeof(unsigned)); 
+	cudaError=cudaMalloc((void**)&cudaMem.intensityRaster, screenW*screenH*sizeof(unsigned)*3); 
 	if (cudaError!=cudaSuccess){
 		fprintf(stderr,"Out of GPU device memory\n");
 		return -1;
@@ -1468,7 +1473,7 @@ int main(int argc, char **argv)
 		screen = SDL_GetWindowSurface(display);
 	}
 		
-	intRaster.pix=(unsigned*)malloc(screenW*screenH*sizeof(unsigned));
+	intRaster.pix=(unsigned*)malloc(screenW*screenH*sizeof(unsigned)*3);
 	intRaster.sizeX=screenW;
 	intRaster.sizeY=screenH;
 	if (intRaster.pix==NULL){
