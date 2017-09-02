@@ -46,6 +46,8 @@ int timeToSimulate = 0;
 char *dumpFilename = NULL;
 bool showParams = false;
 bool offScreen = false;
+bool useColor = false;
+bool useSpeed = false;
 
 const char* programName = "VectorViz v1.00";
 
@@ -670,7 +672,7 @@ int CreateMovingPoints(Camera cam, int processPointsCount)
 	for(int processPointsI=0; processPointsI<processPointsCount; processPointsI++, i+=1) {
 		if (i>=gridVectorN) {i=0;}
 		VectorData& gridVec = gridVector[i];						
-		float offsetFrac=(VecLen(gridVec.v)/500);
+		float offsetFrac= useSpeed ? (VecLen(gridVec.v)/500) : (1.0/4000);
 			
 		unsigned ib = gridVec.indices>>16;
 		unsigned jb = gridVec.indices&0xffff;
@@ -782,7 +784,9 @@ void DrawSDL()
 		ps.curTime,
 		ps.exposure/ps.totalBrightness*cBrightnessMultiplier,
 		ps.length*cLengthMultiplier,
-		maxLength
+		maxLength,
+		useColor,
+		useSpeed
 		);	
 	cudaStreamQuery(0);
 	
@@ -1335,6 +1339,7 @@ int main(int argc, char **argv)
 			printf("\tvector_viz  inputFile -params\n");
 			printf("\tvector_viz  inputFile -centerX <val> -centerY <val> -centerZ <val> -rotLR <val> -rotUD <val> -distance <val> -exposure <val> -length <val> -intensity <val> -time <val> -dump <filename.bmp>\n");
 			printf("\tvector_viz  inputFile -offscreen -w <val> -h <val>\n");
+			printf("\tvector_viz  inputFile -color -speed\n");
 			return 0;
 		#endif		
 		}
@@ -1380,6 +1385,8 @@ int main(int argc, char **argv)
 
 	showParams = CmdOptionExists(argv, argv + argc, "-params");
 	offScreen  = CmdOptionExists(argv, argv + argc, "-offscreen");
+	useColor = CmdOptionExists(argv, argv + argc, "-color");
+	useSpeed = CmdOptionExists(argv, argv + argc, "-speed");
 
 	if (offScreen){
 		if (CmdOptionExists(argv, argv + argc, "-w") && CmdOptionExists(argv, argv + argc, "-h")){

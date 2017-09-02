@@ -111,7 +111,9 @@ void MovingPointsRenderer(
 		unsigned curtime,
 		float brightnessMultiplier,
 		float lengthMultiplier,
-		float maxLength
+		float maxLength,
+		bool useColor,
+		bool useSpeed
 		)				
 {		
 	const unsigned idx = blockIdx.x*blockDim.x + threadIdx.x;	
@@ -142,7 +144,7 @@ void MovingPointsRenderer(
 		Vec v  =VecCreate(mpVelX,mpVelY,mpVelZ);
 		//Vec v(1,1,1);
 		float len = VecLen(v) ;
-		float pos =mpOffs + timeMs*(len/500.0f);
+		float pos =mpOffs + timeMs * (useSpeed ? (len/500.0f) : (1.0/4000));
 		if (pos>1) continue;		
 		Vec p = VecAdd(beg,VecMul(v,pos*lengthMultiplier));
 		
@@ -162,7 +164,7 @@ void MovingPointsRenderer(
 		float fade = len - rainbowIndex;
 		Vec colorFrom = Vec(rainbow[rainbowIndex][0], rainbow[rainbowIndex][1], rainbow[rainbowIndex][2]);
 		Vec colorTo = Vec(rainbow[rainbowIndex + 1][0], rainbow[rainbowIndex + 1][1], rainbow[rainbowIndex + 1][2]);
-		Vec color = lerp(colorFrom, colorTo, fade);
+		Vec color = useColor ? lerp(colorFrom, colorTo, fade) : Vec(1, 1, 1);
 
 		intensityRaster[dstIndex]     += unsigned(brightness * color.x);
 		intensityRaster[dstIndex + 1] += unsigned(brightness * color.y);
@@ -185,7 +187,9 @@ void CallMovingPointsRenderer(
 		unsigned curtime,
 		float brightnessMultiplier,
 		float lengthMultiplier,
-		float maxLength
+		float maxLength,
+		bool useColor,
+		bool useSpeed
 		)				
 {
 	dim3 block(64);
@@ -204,7 +208,9 @@ void CallMovingPointsRenderer(
 		curtime,
 		brightnessMultiplier,
 		lengthMultiplier,
-		maxLength
+		maxLength,
+		useColor,
+		useSpeed
 		);
 }
 

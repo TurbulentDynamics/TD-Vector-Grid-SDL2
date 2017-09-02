@@ -37,7 +37,9 @@ void CallMovingPointsRenderer(
 		unsigned curtime,
 		float brightnessMultiplier,
 		float lengthMultiplier,
-		float maxLength
+		float maxLength,
+		bool useColor,
+		bool useSpeed
 		);
 
 
