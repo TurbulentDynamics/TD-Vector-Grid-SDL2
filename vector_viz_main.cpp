@@ -661,7 +661,6 @@ int CreateMovingPoints(Camera cam, int processPointsCount)
 	const float cameraDistOuterFact = 4/(cameraArrange.dist+60); 
 	
 	const unsigned minMsBetweenPoints = 4000/cMaxDotsPerLine;
-	const float offsetFrac=1.0f/4000;
 	
 	int createdMpI=0;
 		
@@ -671,6 +670,7 @@ int CreateMovingPoints(Camera cam, int processPointsCount)
 	for(int processPointsI=0; processPointsI<processPointsCount; processPointsI++, i+=1) {
 		if (i>=gridVectorN) {i=0;}
 		VectorData& gridVec = gridVector[i];						
+		float offsetFrac=(VecLen(gridVec.v)/500);
 			
 		unsigned ib = gridVec.indices>>16;
 		unsigned jb = gridVec.indices&0xffff;

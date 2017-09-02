@@ -141,8 +141,8 @@ void MovingPointsRenderer(
 		Vec beg=VecCreate(mpBegX,mpBegY,mpBegZ);
 		Vec v  =VecCreate(mpVelX,mpVelY,mpVelZ);
 		//Vec v(1,1,1);
-		
-		float pos =mpOffs + timeMs*(1/4000.0f);
+		float len = VecLen(v) ;
+		float pos =mpOffs + timeMs*(len/500.0f);
 		if (pos>1) continue;		
 		Vec p = VecAdd(beg,VecMul(v,pos*lengthMultiplier));
 		
@@ -157,7 +157,7 @@ void MovingPointsRenderer(
 		if (x<0 || x>=screenW) continue;
 		if (y<0 || y>=screenH) continue;	
 		int dstIndex = (x + y*screenW) * 3;
-		float len = min(VecLen(v) / maxLength * 4, 4.f);
+		len = min(len/ maxLength * 4, 4.f);
 		int rainbowIndex = (int)len;
 		float fade = len - rainbowIndex;
 		Vec colorFrom = Vec(rainbow[rainbowIndex][0], rainbow[rainbowIndex][1], rainbow[rainbowIndex][2]);
