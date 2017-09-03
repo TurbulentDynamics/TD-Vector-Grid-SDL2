@@ -3,8 +3,8 @@ struct Vec
 {
 	float x,y,z;
 	
-	Vec(float px,float py,float pz) : x(px), y(py), z(pz) {}	
-	Vec(int px, int py, int pz) : x(float(px)), y(float(py)), z(float(pz)) {}
+	__host__ __device__ Vec(float px,float py,float pz) : x(px), y(py), z(pz) {}
+	__host__ __device__ Vec(int px, int py, int pz) : x(float(px)), y(float(py)), z(float(pz)) {}
 	__host__ __device__ Vec() {}
 };
 
@@ -36,7 +36,10 @@ void CallMovingPointsRenderer(
 		int screenW, int screenH,
 		unsigned curtime,
 		float brightnessMultiplier,
-		float lengthMultiplier		
+		float lengthMultiplier,
+		float maxLength,
+		bool useColor,
+		bool useSpeed
 		);
 
 
