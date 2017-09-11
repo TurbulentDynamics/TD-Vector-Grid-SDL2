@@ -1,0 +1,29 @@
+# File is divided into 2 parts, input and output
+# The output files will be in a directory and numbered as such node.1.2.2.vvf
+
+
+input:
+  name_root: node
+  dir: plot_slice_vector_step_100_cut_45
+
+
+output:
+params:true
+color:true
+offscreen:true
+w:
+h:
+centerX:
+centerY:
+centerZ:
+rotLR:
+rotUD:
+distance:
+exposure:
+length:
+intensity:
+timie:
+dump: filename.bmp
+speed:
+
+

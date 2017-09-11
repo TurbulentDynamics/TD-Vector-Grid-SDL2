@@ -1,0 +1,48 @@
+# File is divided into 2 parts, input and output
+# The output files will be in a directory and numbered as such node.1.2.2.vvf
+
+
+input:
+  # name_root.x.y.z.vvf
+  name_root: node
+  dir: plot_full_vector_step_100
+  ngx: 3
+  ngy: 3
+  ngz: 3
+  snx: 90
+  sny: 90
+  snz: 90
+
+
+#The output will always be either 
+#   1. Plane cut orthogonally on, x, y, or z axis
+#   2. Plane cut through the center, at an angle phi
+ 
+output:
+ortho:{
+  plane:x,
+  position:23
+}
+#angle:{
+#  phi:30
+#  axis:x
+#}
+params:true
+color:true
+offscreen:true
+w:
+h:
+centerX:
+centerY:
+centerZ:
+rotLR:
+rotUD:
+distance:
+exposure:
+length:
+intensity:
+timie:
+dump: filename.bmp
+speed:
+
+

@@ -1,8 +1,13 @@
 # Turbulent Dynamics
-## Vector Viz SDL
+## Vector Viz SDL:  A utility by Turbulent Dynamics to view a grid of vectors
+
+This utility is built to display vectors from a large grid, (eg 27 billion).  The simulation to create the grid is decomposed across a number of nodes, each with an x, y and z coordinate.  The resulting files are dumped into a directory "dirname/node.x.y.z.vvf"  It would be difficult and pointless to display all the vectors so the output is normally a plane, or slice through the vector space, or a number of each.  The input file example shows the various ways to input the data.
+
+3d picture here. 
 
 
-A utility by Turbulent Dynamics to view a grid of vectors
+
+
 
 
 ## Usage Instructions
@@ -25,3 +30,10 @@ A utility by Turbulent Dynamics to view a grid of vectors
 * space key will pause the visualization
 
 * ESC key to exit
+
+
+
+## Install SDL 2 Instructions
+MacOS
+Ubuntu Linux
+

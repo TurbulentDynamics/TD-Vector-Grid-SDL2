@@ -1,3 +1,7 @@
+# Example output files
+*.bmp
+
+
 # Prerequisites
 *.d
 
