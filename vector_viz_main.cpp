@@ -468,10 +468,6 @@ bool ReadInputFile(const char* inFileName)
 	ReadLineBeg(inFile,str,textLineLength); //skip line
 		
 	int ignore = fscanf(inFile,"%d%d",&nx, &ny);
-	if (nx<60 || ny<60) {
-		printf("Input file grid dimensions too small\n");
-		return false;
-		}
 	if (nx*ny>6000*6000) {
 		printf("Input file grid dimensions too big\n");
 		return false;

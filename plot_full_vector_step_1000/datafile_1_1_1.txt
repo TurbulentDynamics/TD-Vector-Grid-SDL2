@@ -1,0 +1,8 @@
+filename: plot_axis_vector_step_1000_cut_30/datafile_1_1_1.txt
+step: 1000
+snx: 60
+sny: 60
+snz: 60
+ngx: 3
+ngy: 3
+ngz: 3
