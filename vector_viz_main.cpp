@@ -54,6 +54,8 @@ const char* programName = "VectorViz v1.00";
 #ifdef WIN32
 	#define WIN32_LEAN_AND_MEAN
 	#include <windows.h>	
+	#undef min
+	#undef max
 	#define USE_DEFAULT_FILE
 #endif
 
@@ -1450,8 +1452,8 @@ int main(int argc, char **argv)
 		}
 
 
-#if ( /*!defined(_DEBUG) && defined(WIN32)) || */ defined(FULLSCREEN) )
 	if (!offScreen){
+#if ( /*!defined(_DEBUG) && defined(WIN32)) || */ defined(FULLSCREEN) )
 		SDL_DisplayMode current;
 		SDL_GetCurrentDisplayMode(0, &current);
 		screenW = current.w;
