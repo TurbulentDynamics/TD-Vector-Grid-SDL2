@@ -1,14 +1,14 @@
 input:
   name_root: node
-  dir: plot_slice_vector_step_1000_cut_21
+  dir: plot_axis_vector_step_1000_cut_30
   ngx: 3
   ngy: 3
   snx: 60
   sny: 60
+  snz: 60
 
 
 output:
-  filename: plot_slice_vector_step_1000_cut_21.vvf
   params: true
   color: true
   offscreen:
