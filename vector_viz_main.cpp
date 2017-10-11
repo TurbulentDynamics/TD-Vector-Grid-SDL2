@@ -801,16 +801,19 @@ bool ReadMergeInput(char const *dir, char const *nameRoot, int ngx, int ngy, int
 
 	if (strstr(dir, "full"))
 	{
-		if (!merge_native_full(dir, nameRoot, ngx, ngy, ngz, snx, sny, snz)) return false;
-		if (outFilename)
+		struct Slice
 		{
-			SaveVvfFile(outFilename, gridVector, snx, sny, snz);
-		}
+			std::vector<int2> points;
+			int h;
+			int axis;
+			bool isAngle;
+			int param;
+			int begin;
+			int size;
+		};
 
-		std::vector<Vec> slice;
-		for (int i = 0; i < snx * sny; ++i) slice.push_back(gridVector[i + 3600*30].v);
-		std::vector<VectorData> mergedGridVector;
-		int sliceSize;
+		std::vector<Slice> slices;
+		slices.reserve(phi.size() + position.size());
 
 		int bx;
 		int by;
@@ -827,6 +830,8 @@ bool ReadMergeInput(char const *dir, char const *nameRoot, int ngx, int ngy, int
 
 		for (auto angle: phi)
 		{
+			slices.emplace_back();
+			auto &slice = slices.back();
 			auto cx = (bx - 1) * 0.5f;
 			auto cy = (by - 1) * 0.5f;
 			auto rad = angle / 180.f * PI;
@@ -843,93 +848,144 @@ bool ReadMergeInput(char const *dir, char const *nameRoot, int ngx, int ngy, int
 				c = cx;
 			}
 
-			std::vector<int2> points;
-			RasterLine(points, cx - c, cy - s, cx + c, cy + s);
-			sliceSize = points.size() * h;
-			mergedGridVector.reserve(mergedGridVector.size() + sliceSize);
-			int x;
-			int y;
-			int z;
-			int *pX;
-			int *pY;
-			int *pZ;
-			switch (axis)
-			{
-				case 0: pX = &y; pY = &z; pZ = &x; break;
-				case 1: pX = &x; pY = &z; pZ = &y; break;
-				case 2: pX = &x; pY = &y; pZ = &z; break;
-			}
-			for (*pZ = 0; *pZ < h; ++*pZ)
-			{
-				for (auto &point: points)
-				{
-					*pX = point.x;
-					*pY = point.y;
-					mergedGridVector.push_back(gridVector[((z * sny) + y) * snx + x]);
-				}
-			}
-
-			if (outNameRoot)
-			{
-				char buffer[300];
-				sprintf(buffer, "%s_deg_%c_%d.vvf", outNameRoot, "xyz"[axis], angle);
-				SaveVvfFile(buffer, std::vector<VectorData>(mergedGridVector.end() - sliceSize, mergedGridVector.end()), h, points.size(), 1);
-			}
+			RasterLine(slice.points, cx - c, cy - s, cx + c, cy + s);
+			slice.h = h;
+			slice.axis = axis;
+			slice.isAngle = true;
+			slice.param = angle;
 		}
 
-		switch (plane)
+		if (plane < 0 || plane > 2)
 		{
-			case 0: sliceSize = sny * snz; break;
-			case 1: sliceSize = snx * snz; break;
-			case 2: sliceSize = snx * sny; break;
-			default:
-				fprintf(stdout, "Please specify output/ortho/plane using x, y or z\n");
-				return false;
+			fprintf(stdout, "Please specify output/ortho/plane using x, y or z\n");
+			return false;
 		}
-
-		mergedGridVector.reserve(mergedGridVector.size() + position.size() * sliceSize);
 
 		for (auto pos: position)
 		{
-			int xbeg = 0;
-			int ybeg = 0;
-			int zbeg = 0;
-			int xend = snx;
-			int yend = sny;
-			int zend = snz;
+			slices.emplace_back();
+			auto &slice = slices.back();
+			int2 beg;
+			int2 end;
 			switch (plane)
 			{
-				case 0: xbeg = pos; xend = pos + 1; break;
-				case 1: ybeg = pos; yend = pos + 1; break;
-				case 2: zbeg = pos; zend = pos + 1; break;
+				case 0: beg = make_int2(pos,   0); end = make_int2(pos + 1,     sny); h = snz; break;
+				case 1: beg = make_int2(pos,   0); end = make_int2(pos + 1,     snz); h = snx; break;
+				case 2: beg = make_int2(  0, pos); end = make_int2(    snx, pos + 1); h = sny; break;
 			}
 
-			for (int x = xbeg; x < xend; ++x)
+			for (int2 point = beg; point.x < end.x; ++point.x)
 			{
-				for (int y = ybeg; y < yend; ++y)
+				for (point.y = beg.y; point.y < end.y; ++point.y)
 				{
-					for (int z = zbeg; z < zend; ++z)
+					slice.points.push_back(point);
+				}
+			}
+
+			slice.h = h;
+			slice.axis = (plane + 2) % 3;
+			slice.isAngle = false;
+			slice.param = pos;
+		}
+
+		int gridSize = 0;
+		for (auto &slice: slices)
+		{
+			slice.begin = gridSize;
+			slice.size = slice.points.size() * slice.h;
+			gridSize += slice.size;
+		}
+
+		std::vector<VectorData> mergedGridVector(gridSize);
+
+		int nx = snx/ngx;
+		int ny = sny/ngy;
+		int nz = snz/ngz;
+
+		for (int idi = 0; idi < ngx; idi++)
+		{
+			for (int idj = 0; idj < ngy; idj++)
+			{
+				for (int idk = 0; idk < ngz; idk++)
+				{
+					char filename[300];
+					sprintf(filename, "%s/%s.%i.%i.%i.vvf", dir, nameRoot, idi, idj, idk);
+
+					printf("Opening %s", filename);
+					if (!ReadInputFile_FULL(filename)) return false;
+					printf(", Done.\n", filename);
+
+					auto nodeBegin = make_int3(
+						idi * nx,
+						idj * ny,
+						idk * nz);
+					auto nodeEnd = make_int3(
+						nodeBegin.x + nx,
+						nodeBegin.y + ny,
+						nodeBegin.z + nz);
+
+					for (auto &slice: slices)
 					{
-						mergedGridVector.push_back(gridVector[((z * sny) + y) * snx + x]);
+						int x;
+						int y;
+						int z;
+						int *pX;
+						int *pY;
+						int *pZ;
+						switch (slice.axis)
+						{
+							case 0: pX = &y; pY = &z; pZ = &x; break;
+							case 1: pX = &x; pY = &z; pZ = &y; break;
+							case 2: pX = &x; pY = &y; pZ = &z; break;
+						}
+						for (*pZ = 0; *pZ < h; ++*pZ)
+						{
+							for (int iPoint = 0; iPoint < slice.points.size(); ++iPoint)
+							{
+								auto &point = slice.points[iPoint];
+								*pX = point.x;
+								*pY = point.y;
+								if (nodeBegin.x <= x && nodeBegin.y <= y && nodeBegin.z <= z &&
+									x < nodeEnd.x && y < nodeEnd.y && z < nodeEnd.z)
+								{
+									auto mergedIndex = slice.begin + (*pZ * slice.points.size()) + iPoint;
+									auto nodePos = make_int3(
+										x - nodeBegin.x,
+										y - nodeBegin.y,
+										z - nodeBegin.z);
+									auto nodeIndex =  ((nodePos.x * ny) + nodePos.y) * nx + nodePos.z;
+
+									mergedGridVector[mergedIndex] = gridVector[nodeIndex];
+									mergedGridVector[mergedIndex].indices = (x << 20) + (y << 10) + z;
+								}
+							}
+						}
 					}
 				}
 			}
+		}
 
-			if (outNameRoot)
+		if (outNameRoot)
+		{
+			for (auto &slice: slices)
 			{
 				char buffer[300];
-				sprintf(buffer, "%s_cut_%c_%d.vvf", outNameRoot, "xyz"[plane], pos);
-				int nx;
-				int ny;
-				switch (plane)
+				if (slice.isAngle)
 				{
-					case 0: nx = sny; ny = snz; break;
-					case 1: nx = snx; ny = snz; break;
-					case 2: nx = snx; ny = sny; break;
+					sprintf(buffer, "%s_deg_%c_%d.vvf", outNameRoot, "xyz"[axis], slice.param);
 				}
-				SaveVvfFile(buffer, std::vector<VectorData>(mergedGridVector.end() - sliceSize, mergedGridVector.end()), nx, ny, 1);
+				else
+				{
+					sprintf(buffer, "%s_cut_%c_%d.vvf", outNameRoot, "xyz"[plane], slice.param);
+				}
+
+				SaveVvfFile(buffer, std::vector<VectorData>(mergedGridVector.begin() + slice.begin, mergedGridVector.begin() + slice.begin + slice.size), slice.h, slice.points.size(), 1);
 			}
 		}
+
+		ps.nx = snx;
+		ps.ny = sny;
+		ps.nz = snz;
 
 		gridVector = mergedGridVector;
 		return true;
