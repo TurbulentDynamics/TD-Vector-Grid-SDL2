@@ -12,6 +12,7 @@
 #include <cuda_runtime.h>
 
 #include "mp_renderer.h"
+#include "SipYAML.hpp"
 
 float PI=3.1415926535897932384f;
 
@@ -54,16 +55,18 @@ const char* programName = "VectorViz v1.00";
 #ifdef WIN32
 	#define WIN32_LEAN_AND_MEAN
 	#include <windows.h>	
-	#define USE_DEFAULT_FILE
+	#undef min
+	#undef max
+	//#define USE_DEFAULT_FILE
 #endif
 
 #ifdef USE_DEFAULT_FILE
-	const char* inFileNameDefault="flowyz_nx_01536_0012000_vect.vvf";
-	//const char* inFileNameDefault="flowyz0005030.vvf";
+	//const char* inFileNameDefault="flowyz_nx_01536_0012000_vect.vvf";
+	const char* inFileNameDefault="flowyz0005030.vvf";
 #endif
 
 #if !defined(_DEBUG) && !defined(NO_FULLSCREEN)
-	#define FULLSCREEN
+	//#define FULLSCREEN
 #endif
 
 #if defined(FULLSCREEN)
@@ -330,6 +333,7 @@ struct SProgramState
 	bool isAutoAdjust;	
 	int nx;
 	int ny;	
+	int nz;
 	
 	bool isScreenshotRequest;
 	bool isPaused;
@@ -427,9 +431,9 @@ void ReadLineBeg(FILE* file, char* str, int maxLen)
 
 void PermutateGridVectors()
 {
-	for(int i=0; i<ps.nx*ps.ny; i++) {
+	for(int i=0; i<gridVector.size(); i++) {
 		VectorData temp = gridVector[i];
-		int rndI = unsigned(Rng01()*(ps.nx*ps.ny-i))+i;
+		int rndI = unsigned(Rng01()*(gridVector.size()-i))+i;
 		gridVector[i] = gridVector[rndI];
 		gridVector[rndI] = temp;
 		}
@@ -474,8 +478,9 @@ bool ReadInputFile(const char* inFileName)
 		}
 	ReadLineBeg(inFile,str,textLineLength); //skip rest of the line
 	
-	ps.nx=nx;
+	ps.nx=1;
 	ps.ny=ny;
+	ps.nz=nx;
 	gridVector.resize(nx*ny);
 	
 	for(int yi=0; yi<ny; yi++)
@@ -494,8 +499,8 @@ bool ReadInputFile(const char* inFileName)
 				}
 			else
 			int ignore = fscanf(inFile,"%f%f%f%f",&u,&x,&y,&z);
-			gridVector[i].v = Vec( y, -x, z);
-			gridVector[i].indices= (yi<<16)+xi;
+			gridVector[i].v = Vec( x, y, z);
+			gridVector[i].indices= (xi) + (yi<<10);
 			maxLength = std::max(maxLength, VecLen(gridVector[i].v));
 			}	
 	
@@ -503,7 +508,75 @@ bool ReadInputFile(const char* inFileName)
 	return true;
 }
 
-void SaveVvfFile(char* filename)
+bool ReadInputFile_FULL(const char* inFileName)
+{
+	int nx;
+	int ny;
+	int nz;
+
+	FILE* inFile=fopen(inFileName,"rt");
+	if (inFile==NULL) return false;
+
+	const int textLineLength=200;
+	char str[textLineLength];
+	ReadLineBeg(inFile,str,textLineLength);
+	if (!StrBegEqu("VV TEXT FILE", str) && !StrBegEqu("VV FLOAT FILE", str)) {
+		fprintf(stderr,"Not a VVT of VVF file\n");
+		return false;
+	}
+	bool isVvfFile = StrBegEqu("VV FLOAT FILE", str);
+	fclose(inFile);
+
+	inFile=fopen(inFileName, isVvfFile? "rb" : "rt");
+	if (inFile==NULL) return false;
+
+	ReadLineBeg(inFile,str,textLineLength); //skip line
+	ReadLineBeg(inFile,str,textLineLength); //skip line
+	ReadLineBeg(inFile,str,textLineLength); //skip line
+
+	int ignore = fscanf(inFile,"%d%d%d",&nx, &ny, &nz);
+//  if (nx<60 || ny<60 || nz<60) {
+//    printf("Input file grid dimensions too small\n");
+//    return false;
+//  }
+	if (nx*ny>6000*6000) {
+		printf("Input file grid dimensions too big\n");
+		return false;
+	}
+	ReadLineBeg(inFile,str,textLineLength); //skip rest of the line
+
+	gridVector.resize(nx * ny * nz);
+
+	for (int zi=0; zi<nz; zi++)
+		for (int yi=0; yi<ny; yi++)
+			for (int xi=0; xi<nx; xi++)
+			{
+				if (feof(inFile)){
+					printf("Unexpected end-of-file in input file\n");
+					return false;
+				}
+
+				int pos = (zi * ny * nx) + (yi * nx) + (xi);
+
+				float u;
+				float x, y, z;
+
+				x = ReadFloat(inFile);
+				y = ReadFloat(inFile);
+				z = ReadFloat(inFile);
+
+
+				gridVector[pos].v = Vec( x, y, z);
+				maxLength = std::max(maxLength, VecLen(gridVector[pos].v));
+
+				//gridVector[pos].indices= (yi<<16)+xi;
+			}
+
+	fclose(inFile);
+	return true;
+}
+
+void SaveVvfFile(char* filename, std::vector<VectorData> const &grid, int nx, int ny, int nz)
 {
 	FILE* outFile=fopen(filename,"wb");
 	if (outFile==NULL) {
@@ -515,16 +588,410 @@ void SaveVvfFile(char* filename)
 	fprintf(outFile,"\n");
 	fprintf(outFile,"\n");
 		
-	fprintf(outFile,"%d %d\n",ps.nx, ps.ny);	
+	if (nz == 1)
+	{
+		fprintf(outFile,"%d %d\n", nx, ny);
+	}
+	else
+	{
+		fprintf(outFile,"%d %d %d\n", nx, ny, nz);
+	}
 	
-	for(int i=0; i<ps.nx*ps.ny; i++){						
-		Vec v = gridVector[i].v;
+	for(int i=0; i<nx*ny*nz; i++){
+		Vec v = grid[i].v;
 		Vec outVec = Vec(-v.y, v.x, v.z);
 		WriteBytes4(outFile,Bytes4(outVec.x));
 		WriteBytes4(outFile,Bytes4(outVec.y));
-		WriteBytes4(outFile,Bytes4(outVec.z));		
+		WriteBytes4(outFile,Bytes4(outVec.z));
 		}
 	fclose(outFile);
+}
+
+bool merge_native_slice(const char *dirname, char const *nameRoot, int startidi, int endidi, int startidj, int endidj, int startidk, int endidk, int ngx, int ngy, int snx, int sny, char *outFilename)
+{
+	int nx = snx / ngx;
+	int ny = sny / ngy;
+
+	std::vector<VectorData> mergedGridVector;
+	mergedGridVector.resize(snx * sny);
+
+	for (int idi = startidi; idi <= endidi; idi++)
+	{
+		for (int idj = startidj; idj <= endidj; idj++)
+		{
+			for (int idk = startidk; idk <= endidk; idk++)
+			{
+				char filename[300];
+				sprintf(filename, "%s/%s.%i.%i.%i.vvf", dirname, nameRoot, idi, idj, idk);
+
+				printf("Opening %s\n", filename);
+
+				if (!ReadInputFile(filename)) return false;
+
+				for(int yi=0; yi<ny; yi++)
+				{
+					for(int xi=0; xi<nx; xi++)
+					{
+						int i = yi*nx + xi;
+
+						int merged_yi = idj*ny + yi;
+						int merged_xi = idk*ny + xi;
+
+						int merged_i = ((merged_yi)*snx) + (merged_xi);
+
+						mergedGridVector[merged_i].v = gridVector[i].v;
+						mergedGridVector[merged_i].indices = (merged_yi) + (merged_xi<<10);
+					}
+				}
+			}
+		}
+	}
+
+	ps.nx = 1;
+	ps.ny = sny;
+	ps.nz = snx;
+
+	gridVector = mergedGridVector;
+
+	if (outFilename)
+	{
+		SaveVvfFile(outFilename, gridVector, snx, sny, 1);
+	}
+
+	return true;
+}
+
+bool merge_native_axis(const char *dirname, char const *nameRoot, int startidi, int endidi, int startidj, int endidj, int startidk, int endidk, int ngx, int ngy, int snx, int sny, int snz, char *outFilename)
+{
+	int nx = snx / ngx;
+	int ny = sny / ngy;
+
+	std::vector<VectorData> mergedGridVector;
+	mergedGridVector.resize(snx * snz);
+
+	for (int idi = startidi; idi <= endidi; idi++)
+	{
+		for (int idj = startidj; idj <= endidj; idj++)
+		{
+			for (int idk = startidk; idk <= endidk; idk++)
+			{
+				char filename[300];
+				sprintf(filename, "%s/%s.%i.%i.%i.vvf", dirname, nameRoot, idi, idj, idk);
+
+				printf("Opening %s\n", filename);
+
+				if (!ReadInputFile(filename)) return false;
+
+				for(int yi=0; yi<ny; yi++)
+				{
+					for(int xi=0; xi<nx; xi++)
+					{
+						int i = yi*nx + xi;
+
+						int merged_yi = idi*ny + yi;
+						int merged_xi = idk*ny + xi;
+
+						int merged_i = ((merged_yi)*snx) + (merged_xi);
+
+						mergedGridVector[merged_i].v = gridVector[i].v;
+						mergedGridVector[merged_i].indices= (merged_yi<<20) + (merged_xi<<10);
+					}
+				}
+			}
+		}
+	}
+
+	ps.nx = snx;
+	ps.ny = snz;
+	ps.nz = 1;
+
+	gridVector = mergedGridVector;
+
+	if (outFilename)
+	{
+		SaveVvfFile(outFilename, gridVector, snx, sny, 1);
+	}
+
+	return true;
+}
+
+bool merge_native_full(const char *dirname, char const *nameRoot, int ngx, int ngy, int ngz, int snx, int sny, int snz)
+{
+	int nx = snx/ngx;
+	int ny = sny/ngy;
+	int nz = snz/ngz;
+
+	std::vector<VectorData> mergedGridVector;
+	mergedGridVector.resize(snx * sny * snz);
+
+	for (int idi = 0; idi < ngx; idi++)
+	{
+		for (int idj = 0; idj < ngy; idj++)
+		{
+			for (int idk = 0; idk < ngz; idk++)
+			{
+				char filename[300];
+				sprintf(filename, "%s/%s.%i.%i.%i.vvf", dirname, nameRoot, idi, idj, idk);
+
+				printf("Opening %s", filename);
+				if (!ReadInputFile_FULL(filename)) return false;
+				printf(", Done.\n", filename);
+
+				//THIS COUNTS THROUGH THE NODE.  THIS IS NOT THE SAME AS SLICE OR AXIS
+				for (int node_i = 0; node_i < nx; node_i++)
+				{
+					for (int node_j = 0; node_j < ny; node_j++)
+					{
+						for (int node_k = 0; node_k < nz; node_k++)
+						{
+							int imgu = idi * nx + node_i;
+							int imgv = idj * ny + node_j;
+							int imgw = idk * nz + node_k;
+
+							int merged_pos = ((imgw * sny) + imgv) * snx + imgu;
+
+							int node_pos = (node_i * ny * nx) + (node_j * nx) + (node_k);
+
+							mergedGridVector[merged_pos].v = gridVector[node_pos].v;
+							mergedGridVector[merged_pos].indices = (imgu << 20) + (imgv << 10) + imgw;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	ps.nx = snx;
+	ps.ny = sny;
+	ps.nz = snz;
+
+	gridVector = mergedGridVector;
+
+	return true;
+}
+
+void RasterLine(std::vector<int2> &points, int x0, int y0, int x1, int y1)
+{
+	int dx =  abs(x1-x0), sx = x0<x1 ? 1 : -1;
+	int dy = -abs(y1-y0), sy = y0<y1 ? 1 : -1;
+	int err = dx+dy, e2;
+
+	for(;;)
+	{
+		int2 point = { x0, y0 };
+		points.push_back(point);
+		if (x0==x1 && y0==y1) break;
+		e2 = 2*err;
+		if (e2 > dy) { err += dy; x0 += sx; }
+		if (e2 < dx) { err += dx; y0 += sy; }
+	}
+}
+
+bool ReadMergeInput(char const *dir, char const *nameRoot, int ngx, int ngy, int ngz, int snx, int sny, int snz, int plane, std::vector<int> &position, int axis, std::vector<int> &phi, char *outFilename, char *outNameRoot)
+{
+	if (strstr(dir, "slice"))
+	{
+		return merge_native_slice(dir, nameRoot, 1, 1, 0, ngx-1, 0, ngy-1, ngx, ngy, snx, sny, outFilename);
+	}
+
+	if (strstr(dir, "axis"))
+	{
+		return merge_native_axis(dir, nameRoot, 0, ngx-1, 1, 1, 0, ngy-1, ngx, ngy, snx, sny, snz, outFilename);
+	}
+
+	if (strstr(dir, "full"))
+	{
+		struct Slice
+		{
+			std::vector<int2> points;
+			int h;
+			int axis;
+			bool isAngle;
+			int param;
+			int begin;
+			int size;
+		};
+
+		std::vector<Slice> slices;
+		slices.reserve(phi.size() + position.size());
+
+		int bx;
+		int by;
+		int h;
+		switch (axis)
+		{
+			case 0: bx = sny; by = snz; h = snx; break;
+			case 1: bx = snx; by = snz; h = sny; break;
+			case 2: bx = snx; by = sny; h = snz; break;
+			default:
+				fprintf(stdout, "Please specify output/angle/axis using x, y or z\n");
+				return false;
+		}
+
+		for (auto angle: phi)
+		{
+			slices.emplace_back();
+			auto &slice = slices.back();
+			auto cx = (bx - 1) * 0.5f;
+			auto cy = (by - 1) * 0.5f;
+			auto rad = angle / 180.f * PI;
+			auto s = sin(rad);
+			auto c = cos(rad);
+			if (fabs(s) / cy > fabs(c) / cx)
+			{
+				c = c / s * cy;
+				s = cy;
+			}
+			else
+			{
+				s = s / c * cx;
+				c = cx;
+			}
+
+			RasterLine(slice.points, cx - c, cy - s, cx + c, cy + s);
+			slice.h = h;
+			slice.axis = axis;
+			slice.isAngle = true;
+			slice.param = angle;
+		}
+
+		if (plane < 0 || plane > 2)
+		{
+			fprintf(stdout, "Please specify output/ortho/plane using x, y or z\n");
+			return false;
+		}
+
+		for (auto pos: position)
+		{
+			slices.emplace_back();
+			auto &slice = slices.back();
+			int2 beg;
+			int2 end;
+			switch (plane)
+			{
+				case 0: beg = make_int2(pos,   0); end = make_int2(pos + 1,     sny); h = snz; break;
+				case 1: beg = make_int2(pos,   0); end = make_int2(pos + 1,     snz); h = snx; break;
+				case 2: beg = make_int2(  0, pos); end = make_int2(    snx, pos + 1); h = sny; break;
+			}
+
+			for (int2 point = beg; point.x < end.x; ++point.x)
+			{
+				for (point.y = beg.y; point.y < end.y; ++point.y)
+				{
+					slice.points.push_back(point);
+				}
+			}
+
+			slice.h = h;
+			slice.axis = (plane + 2) % 3;
+			slice.isAngle = false;
+			slice.param = pos;
+		}
+
+		int gridSize = 0;
+		for (auto &slice: slices)
+		{
+			slice.begin = gridSize;
+			slice.size = slice.points.size() * slice.h;
+			gridSize += slice.size;
+		}
+
+		std::vector<VectorData> mergedGridVector(gridSize);
+
+		int nx = snx/ngx;
+		int ny = sny/ngy;
+		int nz = snz/ngz;
+
+		for (int idi = 0; idi < ngx; idi++)
+		{
+			for (int idj = 0; idj < ngy; idj++)
+			{
+				for (int idk = 0; idk < ngz; idk++)
+				{
+					char filename[300];
+					sprintf(filename, "%s/%s.%i.%i.%i.vvf", dir, nameRoot, idi, idj, idk);
+
+					printf("Opening %s", filename);
+					if (!ReadInputFile_FULL(filename)) return false;
+					printf(", Done.\n", filename);
+
+					auto nodeBegin = make_int3(
+						idi * nx,
+						idj * ny,
+						idk * nz);
+					auto nodeEnd = make_int3(
+						nodeBegin.x + nx,
+						nodeBegin.y + ny,
+						nodeBegin.z + nz);
+
+					for (auto &slice: slices)
+					{
+						int x;
+						int y;
+						int z;
+						int *pX;
+						int *pY;
+						int *pZ;
+						switch (slice.axis)
+						{
+							case 0: pX = &y; pY = &z; pZ = &x; break;
+							case 1: pX = &x; pY = &z; pZ = &y; break;
+							case 2: pX = &x; pY = &y; pZ = &z; break;
+						}
+						for (*pZ = 0; *pZ < h; ++*pZ)
+						{
+							for (int iPoint = 0; iPoint < slice.points.size(); ++iPoint)
+							{
+								auto &point = slice.points[iPoint];
+								*pX = point.x;
+								*pY = point.y;
+								if (nodeBegin.x <= x && nodeBegin.y <= y && nodeBegin.z <= z &&
+									x < nodeEnd.x && y < nodeEnd.y && z < nodeEnd.z)
+								{
+									auto mergedIndex = slice.begin + (*pZ * slice.points.size()) + iPoint;
+									auto nodePos = make_int3(
+										x - nodeBegin.x,
+										y - nodeBegin.y,
+										z - nodeBegin.z);
+									auto nodeIndex =  ((nodePos.x * ny) + nodePos.y) * nx + nodePos.z;
+
+									mergedGridVector[mergedIndex] = gridVector[nodeIndex];
+									mergedGridVector[mergedIndex].indices = (x << 20) + (y << 10) + z;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		if (outNameRoot)
+		{
+			for (auto &slice: slices)
+			{
+				char buffer[300];
+				if (slice.isAngle)
+				{
+					sprintf(buffer, "%s_deg_%c_%d.vvf", outNameRoot, "xyz"[axis], slice.param);
+				}
+				else
+				{
+					sprintf(buffer, "%s_cut_%c_%d.vvf", outNameRoot, "xyz"[plane], slice.param);
+				}
+
+				SaveVvfFile(buffer, std::vector<VectorData>(mergedGridVector.begin() + slice.begin, mergedGridVector.begin() + slice.begin + slice.size), slice.h, slice.points.size(), 1);
+			}
+		}
+
+		ps.nx = snx;
+		ps.ny = sny;
+		ps.nz = snz;
+
+		gridVector = mergedGridVector;
+		return true;
+	}
+
+	return false;
 }
 
 void AnimationStep(unsigned deltaT_ms)
@@ -574,15 +1041,15 @@ void DrawCharacter(int c, int x, int y)
 
 void DrawString(int x, int y, const char* format, ...)
 {
-    const int maxSize = 1024*2;
-    char buf[maxSize];
-    va_list argptr;
-    va_start(argptr, format);
-    vsnprintf (buf, maxSize, format, argptr);
-    va_end(argptr);
-    
-    int len = strlen(buf);
-    for (int i=0;i<len;i++)
+		const int maxSize = 1024*2;
+		char buf[maxSize];
+		va_list argptr;
+		va_start(argptr, format);
+		vsnprintf (buf, maxSize, format, argptr);
+		va_end(argptr);
+
+		int len = strlen(buf);
+		for (int i=0;i<len;i++)
 		DrawCharacter(buf[i],x+i*GetGlyphWidth(),y);
 }
 
@@ -647,14 +1114,14 @@ int CreateMovingPoints(Camera cam, int processPointsCount)
 {				
 	if(ps.isPaused ) return 0;
 	
-	const float gridSize = 130.0f/sqrtf(1.0f*ps.nx*ps.ny);												
+	const float gridSize = 130.0f/pow(1.0f*ps.nx*ps.ny*ps.nz, 1.f/3);
 	
 	const int gridVectorN = int(gridVector.size());						
 	//ps.pointCntExp=-10;
 	float pointCntInv=0.11f*(1<<(-ps.pointCntExp));	
-	pointCntInv *= sqrtf(sqrtf(float(ps.ny*ps.ny)))/40;
+	pointCntInv *= sqrtf(sqrtf(float(ps.nx*ps.ny*ps.nz)))/40;
 	
-	Vec gridCenter = VecMul( Vec(ps.nx/2.0f-0.5f, 0.0f, ps.ny/2.0f-0.5f), gridSize);			
+	Vec gridCenter = VecMul( Vec(ps.nx/2.0f-0.5f, ps.ny/2.0f-0.5f, ps.nz/2.0f-0.5f), gridSize);
 	
 	const float cameraDistOuterFact = 4/(cameraArrange.dist+60); 
 	
@@ -670,9 +1137,10 @@ int CreateMovingPoints(Camera cam, int processPointsCount)
 		VectorData& gridVec = gridVector[i];						
 		float offsetFrac= useSpeed ? (VecLen(gridVec.v)/500) : (1.0/4000);
 			
-		unsigned ib = gridVec.indices>>16;
-		unsigned jb = gridVec.indices&0xffff;
-		Vec beg = Vec(gridSize*jb - gridCenter.x, 0.0f, gridSize*ib - gridCenter.z);		
+		unsigned ib = (gridVec.indices>>20) & 0x3FF;
+		unsigned jb = (gridVec.indices>>10) & 0x3FF;
+		unsigned kb = gridVec.indices&0x3ff;
+		Vec beg = Vec(gridSize*ib - gridCenter.x, gridSize*jb - gridCenter.y, gridSize*kb - gridCenter.z);
 		
 		Vec cameraToBeg = VecSub(beg,cam.eye);
 		float zdist = DotProduct( cameraToBeg,  cam.dir);
@@ -795,8 +1263,8 @@ void DrawSDL()
 	if ( clearThrottle==0 && mpBufDescCuda.size()*processVectorsCount*3>cudaMaxPoints 
 		 && !ps.isPaused && ps.curTime > mpBufDescCuda.back().startTime && 
 		 cudaMaxPoints/4000 <= mpBufDescCuda.back().n/(ps.curTime - mpBufDescCuda.back().startTime) 
-	   )
-	     { ps.pointCntExp--; clearThrottle=(ps.nx*ps.ny)/processVectorsCount+1; }
+		 )
+			 { ps.pointCntExp--; clearThrottle=(ps.nx*ps.ny)/processVectorsCount+1; }
 
 	int newMpN = CreateMovingPoints(cam, processVectorsCount);
 	
@@ -828,7 +1296,7 @@ void DrawSDL()
 	RenderIntensityRaster();
 	
 	DrawString(-4,0," %-.32s", inFileName);
-	DrawString(-4,24," %d x %d", ps.nx, ps.ny);
+	DrawString(-4,24," %d x %d x %d", ps.nx, ps.ny, ps.nz);
 		
 	DrawString(screenW-585, 0," Density: %3d  o/p   ", ps.pointCntExp);	
 	DrawString(screenW-314, 0," Length  : %5.1f     a/d ", ps.length);
@@ -889,7 +1357,7 @@ void EventLoop()
 {	
 	int sym;
 	SDL_Event event;
-    bool isEvent=false;
+		bool isEvent=false;
 	bool isDrawReq=true;
 	int noDrawEventCount=0;
 	TIMER lastDrawTime;
@@ -1044,6 +1512,7 @@ void EventLoop()
 					case SDL_WINDOWEVENT_RESTORED:
 						if (!ps.sys.isActive){
 							SDL_SetWindowGrab(display, SDL_TRUE);
+							SDL_SetRelativeMouseMode(SDL_TRUE);
 							SDL_ShowCursor(0);
 							noRedrawTimer.Reset();
 							ps.sys.isActive=true;
@@ -1052,6 +1521,7 @@ void EventLoop()
 					case SDL_WINDOWEVENT_MINIMIZED:
 						if (ps.sys.isActive){
 							SDL_SetWindowGrab(display, SDL_FALSE);
+							SDL_SetRelativeMouseMode(SDL_FALSE);
 							SDL_ShowCursor(1);
 							ps.sys.isActive=false;
 						}
@@ -1214,8 +1684,8 @@ void EventLoop()
 
 void Init() 
 {					
-	createdMp.resize(ps.nx*ps.ny*3);	
-	separatedMp.resize(ps.nx*ps.ny*3*sizeof(MovingPoint)/sizeof(float));
+	createdMp.resize(gridVector.size()*3);
+	separatedMp.resize(gridVector.size()*3*sizeof(MovingPoint)/sizeof(float));
 	
 	cameraArrange.rotLR = rotLRInit;
 	cameraArrange.rotUD = rotUDInit;
@@ -1229,23 +1699,23 @@ void Init()
 		
 	//calculate maximum number of miliseconds between dots of a vector
 	double sumLen=0;
-	for (int i=0;i<ps.nx*ps.ny;i++)		
+	for (int i=0;i<gridVector.size();i++)
 		sumLen += VecLen(gridVector[i].v);			
-	float maxDotSpread = 1.0f/float(0.01*sumLen/(ps.nx*ps.ny));
+	float maxDotSpread = 1.0f/float(0.01*sumLen/(gridVector.size()));
 	
-	for (int i=0;i<ps.nx*ps.ny;i++)
+	for (int i=0;i<gridVector.size();i++)
 		gridVector[i] = CreateGridVector(gridVector[i].v, gridVector[i].indices, maxDotSpread);
 	
 	//normalize total brightness
 	double sumBrightness = 0;
-	for (int i=0;i<ps.nx*ps.ny;i++) 
+	for (int i=0;i<gridVector.size();i++)
 		sumBrightness += gridVector[i].dotBrightness;
 	ps.totalBrightness = float(sumBrightness)/(screenW*screenW);
 	
 	if (!dumpFilename){
 		//reduce initial exposure on small grids
-		if ( sqrt(1.0*ps.nx*ps.ny)<700 )
-			ps.exposure *= float(sqrt(1.0*ps.nx*ps.ny)/700);
+		if ( sqrt(1.0*ps.nx*ps.ny*ps.nz)<700 )
+			ps.exposure *= float(sqrt(1.0*ps.nx*ps.ny*ps.nz)/700);
 	}
 		
 	ps.sys.isActive=true;
@@ -1322,6 +1792,59 @@ bool CmdOptionExists(char **begin, char **end, const std::string &option)
 	return std::find(begin, end, option) != end;
 }
 
+void OverrideOption(char *&option, char *cmdOption)
+{
+	if (cmdOption) option = cmdOption;
+}
+
+void indent(size_t amount)
+{
+	for (size_t i = 0; i != amount; ++i)
+	{
+		cout << '\t';
+	}
+}
+
+void showYAMLValue(Sip::YAMLDocumentUTF8::Node *node, size_t amount = 0)
+{
+	while (node)
+	{
+		indent(amount);
+		cout << "Node: ";
+		switch (node->type() & 0xF)
+		{
+		case Sip::Sequence:
+			cout << "Sequence";
+			break;
+		case Sip::Mapping:
+			cout << "Mapping";
+			break;
+		case Sip::Comment:
+			cout << "Comment";
+		}
+		cout << std::endl;
+		if (node->key())
+		{
+			indent(amount);
+			cout << "  Key: \"";
+			cout.write(node->key(), node->keySize());
+			cout << "\"" << std::endl;
+		}
+		if (node->value())
+		{
+			indent(amount);
+			cout << "  Value: \"";
+			cout.write(node->value(), node->valueSize());
+			cout << "\"" << std::endl;
+		}
+		if (node->firstChild())
+		{
+			showYAMLValue(node->firstChild(), amount + 1);
+		}
+		node = node->nextSibling();
+	}
+}
+
 int main(int argc, char **argv) 
 {  		
 	if (argc<2){
@@ -1342,52 +1865,365 @@ int main(int argc, char **argv)
 	else
 		strcpy(inFileName,argv[1]);
 		
+	char *centerX = nullptr;
+	char *centerY = nullptr;
+	char *centerZ = nullptr;
+	char *rotLR = nullptr;
+	char *rotUD = nullptr;
+	char *distance = nullptr;
+	char *exposure = nullptr;
+	char *length = nullptr;
+	char *intensity = nullptr;
+	char *time = nullptr;
+	char *dump = nullptr;
+	char *w = nullptr;
+	char *h = nullptr;
+
+	if (CmdOptionExists(argv, argv + argc, "-yaml")) {
+		char *yamlFilename = GetCmdOption(argv, argv + argc, "-yaml");
+		strcpy(inFileName,yamlFilename);
+		char *yamlSource = NULL;
+		FILE *yamlFile = fopen(yamlFilename,"r");
+		if (yamlFile == NULL){
+			fprintf(stdout,"Error opening yaml file: %s\n", yamlFilename);
+			return 1;
+		}
+		fseek(yamlFile, 0L, SEEK_END);
+		long size = ftell(yamlFile);
+		fseek(yamlFile, 0, SEEK_SET);
+		yamlSource = (char*) malloc(size + 1);
+		size = fread(yamlSource, 1, size, yamlFile);
+		yamlSource[size] = 0;
+		fclose(yamlFile);
+
+		Sip::YAMLDocumentUTF8 doc;
+		doc.parse(yamlSource);
+		//showYAMLValue(doc.firstChild());
+		Sip::YAMLDocumentUTF8::Node *pInputNode;
+		Sip::YAMLDocumentUTF8::Node *pOutputNode;
+
+		for (auto pNode = doc.firstChild(); pNode; pNode = pNode->nextSibling())
+		{
+			if (pNode->type() != Sip::YAMLType::Mapping) continue;
+
+			((char*)pNode->key())[pNode->keySize()] = 0;
+			if (!strcmp("input", pNode->key()))
+			{
+				pInputNode = pNode;
+			}
+			else if (!strcmp("output", pNode->key()))
+			{
+				pOutputNode = pNode;
+			}
+		}
+
+		char *nameRoot = nullptr;
+		char *dir = nullptr;
+		char *ngxStr = "3";
+		char *ngyStr = "3";
+		char *ngzStr = "3";
+		char *snxStr = "60";
+		char *snyStr = "60";
+		char *snzStr = "60";
+		char *xcutStr = nullptr;
+		char *ycutStr = nullptr;
+		char *zcutStr = nullptr;
+
+		std::pair<char const*, char**> inParameters[] =
+		{
+			std::make_pair("name_root", &nameRoot),
+			std::make_pair("dir",       &dir),
+			std::make_pair("ngx",       &ngxStr),
+			std::make_pair("ngy",       &ngyStr),
+			std::make_pair("ngz",       &ngzStr),
+			std::make_pair("snx",       &snxStr),
+			std::make_pair("sny",       &snyStr),
+			std::make_pair("snz",       &snzStr),
+			std::make_pair("xcut",      &xcutStr),
+			std::make_pair("zcut",      &zcutStr),
+			std::make_pair("ycut",      &ycutStr),
+		};
+
+		for (auto pNode = pInputNode->firstChild(); pNode; pNode = pNode->nextSibling())
+		{
+			if (pNode->type() != Sip::YAMLType::Mapping) continue;
+
+			((char*)pNode->key())[pNode->keySize()] = 0;
+			for (auto &parameter: inParameters)
+			{
+				if (!strcmp(parameter.first, pNode->key()))
+				{
+					if (pNode->valueSize())
+					{
+						*parameter.second = (char*)pNode->value();
+						(*parameter.second)[pNode->valueSize()] = 0;
+					}
+				}
+			}
+		}
+
+		if (!nameRoot)
+		{
+			fprintf(stdout, "Please specify input name root\n");
+			return 1;
+		}
+
+		if (!dir)
+		{
+			fprintf(stdout, "Please specify input directory\n");
+			return 1;
+		}
+
+		auto ngx = atoi(ngxStr);
+		auto ngy = atoi(ngyStr);
+		auto ngz = atoi(ngzStr);
+		auto snx = atoi(snxStr);
+		auto sny = atoi(snyStr);
+		auto snz = atoi(snzStr);
+		Sip::YAMLDocumentUTF8::Node *pOrthoNode = nullptr;
+		Sip::YAMLDocumentUTF8::Node *pAngleNode = nullptr;
+
+		char *outNameRoot = nullptr;
+		char *outFilename = nullptr;
+		std::pair<char const*, char**> outParameters[] =
+		{
+			std::make_pair("w",         &w),
+			std::make_pair("h",         &h),
+			std::make_pair("centerX",   &centerX),
+			std::make_pair("centerY",   &centerY),
+			std::make_pair("centerZ",   &centerZ),
+			std::make_pair("rotLR",     &rotLR),
+			std::make_pair("rotUD",     &rotUD),
+			std::make_pair("distance",  &distance),
+			std::make_pair("exposure",  &exposure),
+			std::make_pair("length",    &length),
+			std::make_pair("intensity", &intensity),
+			std::make_pair("time",      &time),
+			std::make_pair("dump",      &dump),
+			std::make_pair("name_root", &outNameRoot),
+			std::make_pair("filename",  &outFilename),
+		};
+		std::pair<char const*, bool*> flags[] =
+		{
+			std::make_pair("params", &showParams),
+			std::make_pair("color", &useColor),
+			std::make_pair("offscreen", &offScreen),
+			std::make_pair("speed", &useSpeed),
+		};
+		std::pair<char const *, Sip::YAMLDocumentUTF8::Node**> subNodes[] =
+		{
+			std::make_pair("ortho", &pOrthoNode),
+			std::make_pair("angle", &pAngleNode),
+		};
+
+		for (auto pNode = pOutputNode->firstChild(); pNode; pNode = pNode->nextSibling())
+		{
+			if (pNode->type() != Sip::YAMLType::Mapping) continue;
+
+			((char*)pNode->key())[pNode->keySize()] = 0;
+			for (auto &parameter: outParameters)
+			{
+				if (!strcmp(parameter.first, pNode->key()))
+				{
+					if (pNode->valueSize())
+					{
+						*parameter.second = (char*)pNode->value();
+						(*parameter.second)[pNode->valueSize()] = 0;
+					}
+
+					break;
+				}
+			}
+
+			for (auto &flag: flags)
+			{
+				if (!strcmp(flag.first, pNode->key()))
+				{
+					((char*)pNode->value())[pNode->valueSize()] = 0;
+					*flag.second = !strcmp("true", pNode->value());
+					break;
+				}
+			}
+
+			for (auto &node: subNodes)
+			{
+				if (!strcmp(node.first, pNode->key()))
+				{
+					((char*)pNode->value())[pNode->valueSize()] = 0;
+					*node.second = pNode;
+					break;
+				}
+			}
+		}
+
+		int plane = 0;
+		std::vector<int> position;
+		int axis = 0;
+		std::vector<int> phi;
+		bool angle = false;
+
+		struct
+		{
+			Sip::YAMLDocumentUTF8::Node *pNode;
+			char const *pAxisName;
+			char const *pPositionName;
+			int *pAxis;
+			std::vector<int> *pPosition;
+		} orientations[] =
+		{
+			{ pOrthoNode, "plane", "position", &plane, &position },
+			{ pAngleNode, "axis",  "phi",      &axis,  &phi },
+		};
+
+		for (auto &orientation: orientations)
+		{
+			if (!orientation.pNode) continue;
+
+			for (auto pNode = orientation.pNode->firstChild(); pNode; pNode = pNode->nextSibling())
+			{
+				if (pNode->type() != Sip::YAMLType::Mapping) continue;
+
+				((char*)pNode->key())[pNode->keySize()] = 0;
+				if (!strcmp(orientation.pAxisName, pNode->key()))
+				{
+					*orientation.pAxis = pNode->value()[0] - 'x';
+				}
+				else if (!strcmp(orientation.pPositionName, pNode->key()))
+				{
+					if (pNode->valueSize())
+					{
+						((char*)pNode->value())[pNode->valueSize()] = 0;
+						orientation.pPosition->push_back(atoi(pNode->value()));
+					}
+					else
+					{
+						for (auto pElement = pNode->firstChild(); pElement; pElement = pElement->nextSibling())
+						{
+							if (pElement->type() != Sip::YAMLType::Sequence) continue;
+
+							if (pElement->valueSize())
+							{
+								((char*)pElement->value())[pElement->valueSize()] = 0;
+								orientation.pPosition->push_back(atoi(pElement->value()));
+							}
+						}
+					}
+				}
+			}
+		}
+
+		bool isOk = ReadMergeInput(dir, nameRoot, ngx, ngy, ngz, snx, sny, snz, plane, position, axis, phi, outFilename, outNameRoot);
+		if (!isOk)
+		{
+			fprintf(stdout,"Error opening input file(s)\n");
+			return 1;
+		}
+	}
+	else {
 	bool isOk=ReadInputFile(inFileName);
 	if (!isOk) {
 		fprintf(stdout,"Error opening input file: %s\n", inFileName);		
 		return 1;
 		}	
 
-
-
-	if(CmdOptionExists(argv, argv + argc, "-c")){
-		char *outFilename = GetCmdOption(argv, argv + argc, "-c");
-		if(outFilename){
-			bool isOk=ReadInputFile(inFileName);
-			if (!isOk) {
-				fprintf(stdout,"Error opening input file: %s\n", inFileName);
+		if(CmdOptionExists(argv, argv + argc, "-c")){
+			char *outFilename = GetCmdOption(argv, argv + argc, "-c");
+			if(outFilename){
+				SaveVvfFile(outFilename, gridVector, ps.nz, ps.ny, 1);
+				return 0;
+			}
+			else{
+				fprintf(stdout,"Please specify output filename\n");
 				return 1;
-				}
-			SaveVvfFile(outFilename);
-			return 0;
+			}
 		}
-		else{
-			fprintf(stdout,"Please specify output filename\n");
-			return 1;
+
+		auto pCut = strstr(inFileName, "_cut_");
+		auto pDeg = strstr(inFileName, "_deg_");
+		auto isCut = !!pCut;
+		if (!isCut) pCut = pDeg;
+		if (pCut)
+		{
+			auto plane = pCut[5];
+			if (pCut[5] && pCut[6] && pCut[7])
+			{
+				//auto pos = atoi(pCut + 7);
+				if (plane == 'y' && isCut)
+				{
+					for (auto &gridVec: gridVector)
+					{
+						unsigned y = (gridVec.indices >> 20) & 0x3FF;
+						unsigned x = (gridVec.indices >> 10) & 0x3FF;
+						unsigned z =  gridVec.indices & 0x3ff;
+						gridVec.indices = (x << 20) + (y << 10) + z;
+					}
+
+					int ny = ps.nx;
+					int nx = ps.ny;
+					int nz = ps.nz;
+					ps.nx = nx;
+					ps.ny = ny;
+					ps.nz = nz;
+				}
+				else if (plane == 'z' && isCut || plane == 'x' && !isCut)
+				{
+					for (auto &gridVec: gridVector)
+					{
+						unsigned z = (gridVec.indices >> 20) & 0x3FF;
+						unsigned x = (gridVec.indices >> 10) & 0x3FF;
+						unsigned y =  gridVec.indices & 0x3ff;
+						gridVec.indices = (x << 20) + (y << 10) + z;
+					}
+
+					int nz = ps.nx;
+					int nx = ps.ny;
+					int ny = ps.nz;
+					ps.nx = nx;
+					ps.ny = ny;
+					ps.nz = nz;
+				}
+				else if ((plane == 'y' || plane == 'z') && !isCut)
+				{
+					for (auto &gridVec: gridVector)
+					{
+						unsigned z = (gridVec.indices >> 20) & 0x3FF;
+						unsigned y = (gridVec.indices >> 10) & 0x3FF;
+						unsigned x =  gridVec.indices & 0x3ff;
+						gridVec.indices = (x << 20) + (y << 10) + z;
+					}
+
+					int nz = ps.nx;
+					int ny = ps.ny;
+					int nx = ps.nz;
+					ps.nx = nx;
+					ps.ny = ny;
+					ps.nz = nz;
+				}
+			}
 		}
 	}
 
-	char *centerX      = GetCmdOption(argv, argv + argc, "-centerX");
-	char *centerY      = GetCmdOption(argv, argv + argc, "-centerY");
-	char *centerZ      = GetCmdOption(argv, argv + argc, "-centerZ");
-	char *rotLR        = GetCmdOption(argv, argv + argc, "-rotLR");
-	char *rotUD        = GetCmdOption(argv, argv + argc, "-rotUD");
-	char *distance     = GetCmdOption(argv, argv + argc, "-distance");
-	char *exposure     = GetCmdOption(argv, argv + argc, "-exposure");
-	char *length       = GetCmdOption(argv, argv + argc, "-length");
-	char *intensity    = GetCmdOption(argv, argv + argc, "-intensity");
-	char *time         = GetCmdOption(argv, argv + argc, "-time");
-	char *dump         = GetCmdOption(argv, argv + argc, "-dump");
+	OverrideOption(centerX,      GetCmdOption(argv, argv + argc, "-centerX"));
+	OverrideOption(centerY,      GetCmdOption(argv, argv + argc, "-centerY"));
+	OverrideOption(centerZ,      GetCmdOption(argv, argv + argc, "-centerZ"));
+	OverrideOption(rotLR,        GetCmdOption(argv, argv + argc, "-rotLR"));
+	OverrideOption(rotUD,        GetCmdOption(argv, argv + argc, "-rotUD"));
+	OverrideOption(distance,     GetCmdOption(argv, argv + argc, "-distance"));
+	OverrideOption(exposure,     GetCmdOption(argv, argv + argc, "-exposure"));
+	OverrideOption(length,       GetCmdOption(argv, argv + argc, "-length"));
+	OverrideOption(intensity,    GetCmdOption(argv, argv + argc, "-intensity"));
+	OverrideOption(time,         GetCmdOption(argv, argv + argc, "-time"));
+	OverrideOption(dump,         GetCmdOption(argv, argv + argc, "-dump"));
 
-	showParams = CmdOptionExists(argv, argv + argc, "-params");
-	offScreen  = CmdOptionExists(argv, argv + argc, "-offscreen");
-	useColor = CmdOptionExists(argv, argv + argc, "-color");
-	useSpeed = CmdOptionExists(argv, argv + argc, "-speed");
+	showParams ^= CmdOptionExists(argv, argv + argc, "-params");
+	offScreen  ^= CmdOptionExists(argv, argv + argc, "-offscreen");
+	useColor ^= CmdOptionExists(argv, argv + argc, "-color");
+	useSpeed ^= CmdOptionExists(argv, argv + argc, "-speed");
 
 	if (offScreen){
-		if (CmdOptionExists(argv, argv + argc, "-w") && CmdOptionExists(argv, argv + argc, "-h")){
-			char *w = GetCmdOption(argv, argv + argc, "-w");
-			char *h = GetCmdOption(argv, argv + argc, "-h");
+		if ((w || CmdOptionExists(argv, argv + argc, "-w")) && (h || CmdOptionExists(argv, argv + argc, "-h"))){
+			OverrideOption(w, GetCmdOption(argv, argv + argc, "-w"));
+			OverrideOption(h, GetCmdOption(argv, argv + argc, "-h"));
 			screenW = atoi(w);
 			screenH = atoi(h);
 		}
@@ -1449,9 +2285,8 @@ int main(int argc, char **argv)
 		return 1;
 		}
 
-
-#if ( /*!defined(_DEBUG) && defined(WIN32)) || */ defined(FULLSCREEN) )
 	if (!offScreen){
+#if ( /*!defined(_DEBUG) && defined(WIN32)) || */ defined(FULLSCREEN) )
 		SDL_DisplayMode current;
 		SDL_GetCurrentDisplayMode(0, &current);
 		screenW = current.w;
@@ -1460,6 +2295,7 @@ int main(int argc, char **argv)
 #else
 		display = SDL_CreateWindow(programName, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, screenW, screenH, SDL_WINDOW_INPUT_GRABBED);
 #endif
+		SDL_SetRelativeMouseMode(SDL_TRUE);
 	}
 
 	if ( !offScreen && display == NULL ) {
@@ -1504,8 +2340,9 @@ int main(int argc, char **argv)
 	
 	// Loop, drawing and checking events 
 	EventLoop();      
-	  	
+
 	SDL_SetWindowGrab(display, SDL_FALSE);
+	SDL_SetRelativeMouseMode(SDL_FALSE);
 	SDL_ShowCursor(1);
 	
 	SDL_Quit();
