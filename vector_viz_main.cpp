@@ -1859,6 +1859,7 @@ int main(int argc, char **argv)
 			printf("\tvector_viz  inputFile -centerX <val> -centerY <val> -centerZ <val> -rotLR <val> -rotUD <val> -distance <val> -exposure <val> -length <val> -intensity <val> -time <val> -dump <filename.bmp>\n");
 			printf("\tvector_viz  inputFile -offscreen -w <val> -h <val>\n");
 			printf("\tvector_viz  inputFile -color -speed\n");
+			printf("\tvector_viz  -yaml input.yaml\n");
 			return 0;
 		#endif		
 		}
@@ -2165,7 +2166,7 @@ int main(int argc, char **argv)
 					ps.ny = ny;
 					ps.nz = nz;
 				}
-				else if (plane == 'z' && isCut || plane == 'x' && !isCut)
+				else if ((plane == 'z' && isCut) || (plane == 'x' && !isCut))
 				{
 					for (auto &gridVec: gridVector)
 					{
