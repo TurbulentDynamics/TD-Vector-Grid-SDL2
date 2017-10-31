@@ -357,7 +357,7 @@ struct SProgramState
 
 struct VectorData
 {		
-	unsigned indices;
+	uint64_t indices;
 	unsigned prevMsBetweenPoints;
 	unsigned lastMpTime;
 	float dotSpread;		
@@ -368,7 +368,7 @@ struct VectorData
 
 std::vector<VectorData> gridVector;
 
-VectorData CreateGridVector(Vec inVec, unsigned indices, float maxDotSpread)
+VectorData CreateGridVector(Vec inVec, uint64_t indices, float maxDotSpread)
 {
 	VectorData gridVec;
 	gridVec.v = inVec;
@@ -500,7 +500,7 @@ bool ReadInputFile(const char* inFileName)
 			else
 			int ignore = fscanf(inFile,"%f%f%f%f",&u,&x,&y,&z);
 			gridVector[i].v = Vec( x, y, z);
-			gridVector[i].indices= (xi) + (yi<<10);
+			gridVector[i].indices= (xi) + ((uint64_t)yi<<21);
 			maxLength = std::max(maxLength, VecLen(gridVector[i].v));
 			}	
 	
@@ -640,7 +640,7 @@ bool merge_native_slice(const char *dirname, char const *nameRoot, int startidi,
 						int merged_i = ((merged_yi)*snx) + (merged_xi);
 
 						mergedGridVector[merged_i].v = gridVector[i].v;
-						mergedGridVector[merged_i].indices = (merged_yi) + (merged_xi<<10);
+						mergedGridVector[merged_i].indices = (merged_yi) + ((uint64_t)merged_xi<<21);
 					}
 				}
 			}
@@ -694,7 +694,7 @@ bool merge_native_axis(const char *dirname, char const *nameRoot, int startidi, 
 						int merged_i = ((merged_yi)*snx) + (merged_xi);
 
 						mergedGridVector[merged_i].v = gridVector[i].v;
-						mergedGridVector[merged_i].indices= (merged_yi<<20) + (merged_xi<<10);
+						mergedGridVector[merged_i].indices= ((uint64_t)merged_yi<<42) + ((uint64_t)merged_xi<<21);
 					}
 				}
 			}
@@ -753,7 +753,7 @@ bool merge_native_full(const char *dirname, char const *nameRoot, int ngx, int n
 							int node_pos = (node_i * ny * nx) + (node_j * nx) + (node_k);
 
 							mergedGridVector[merged_pos].v = gridVector[node_pos].v;
-							mergedGridVector[merged_pos].indices = (imgu << 20) + (imgv << 10) + imgw;
+							mergedGridVector[merged_pos].indices = ((uint64_t)imgu << 42) + ((uint64_t)imgv << 21) + imgw;
 						}
 					}
 				}
@@ -956,7 +956,7 @@ bool ReadMergeInput(char const *dir, char const *nameRoot, int ngx, int ngy, int
 									auto nodeIndex =  ((nodePos.x * ny) + nodePos.y) * nx + nodePos.z;
 
 									mergedGridVector[mergedIndex] = gridVector[nodeIndex];
-									mergedGridVector[mergedIndex].indices = (x << 20) + (y << 10) + z;
+									mergedGridVector[mergedIndex].indices = ((uint64_t)x << 42) + ((uint64_t)y << 21) + z;
 								}
 							}
 						}
@@ -1137,9 +1137,9 @@ int CreateMovingPoints(Camera cam, int processPointsCount)
 		VectorData& gridVec = gridVector[i];						
 		float offsetFrac= useSpeed ? (VecLen(gridVec.v)/500) : (1.0/4000);
 			
-		unsigned ib = (gridVec.indices>>20) & 0x3FF;
-		unsigned jb = (gridVec.indices>>10) & 0x3FF;
-		unsigned kb = gridVec.indices&0x3ff;
+		unsigned ib = (gridVec.indices>>42) & 0x1FFFFF;
+		unsigned jb = (gridVec.indices>>21) & 0x1FFFFF;
+		unsigned kb = gridVec.indices&0x1FFFFF;
 		Vec beg = Vec(gridSize*ib - gridCenter.x, gridSize*jb - gridCenter.y, gridSize*kb - gridCenter.z);
 		
 		Vec cameraToBeg = VecSub(beg,cam.eye);
@@ -2153,10 +2153,10 @@ int main(int argc, char **argv)
 				{
 					for (auto &gridVec: gridVector)
 					{
-						unsigned y = (gridVec.indices >> 20) & 0x3FF;
-						unsigned x = (gridVec.indices >> 10) & 0x3FF;
-						unsigned z =  gridVec.indices & 0x3ff;
-						gridVec.indices = (x << 20) + (y << 10) + z;
+						unsigned y = (gridVec.indices >> 42) & 0x1FFFFF;
+						unsigned x = (gridVec.indices >> 21) & 0x1FFFFF;
+						unsigned z =  gridVec.indices & 0x1FFFFF;
+						gridVec.indices = ((uint64_t)x << 42) + ((uint64_t)y << 21) + z;
 					}
 
 					int ny = ps.nx;
@@ -2170,10 +2170,10 @@ int main(int argc, char **argv)
 				{
 					for (auto &gridVec: gridVector)
 					{
-						unsigned z = (gridVec.indices >> 20) & 0x3FF;
-						unsigned x = (gridVec.indices >> 10) & 0x3FF;
-						unsigned y =  gridVec.indices & 0x3ff;
-						gridVec.indices = (x << 20) + (y << 10) + z;
+						unsigned z = (gridVec.indices >> 40) & 0x1FFFFF;
+						unsigned x = (gridVec.indices >> 20) & 0x1FFFFF;
+						unsigned y =  gridVec.indices & 0x1FFFFF;
+						gridVec.indices = ((uint64_t)x << 42) + ((uint64_t)y << 21) + z;
 					}
 
 					int nz = ps.nx;
@@ -2187,10 +2187,10 @@ int main(int argc, char **argv)
 				{
 					for (auto &gridVec: gridVector)
 					{
-						unsigned z = (gridVec.indices >> 20) & 0x3FF;
-						unsigned y = (gridVec.indices >> 10) & 0x3FF;
-						unsigned x =  gridVec.indices & 0x3ff;
-						gridVec.indices = (x << 20) + (y << 10) + z;
+						unsigned z = (gridVec.indices >> 40) & 0x1FFFFF;
+						unsigned y = (gridVec.indices >> 20) & 0x1FFFFF;
+						unsigned x =  gridVec.indices & 0x1FFFFF;
+						gridVec.indices = ((uint64_t)x << 42) + ((uint64_t)y << 21) + z;
 					}
 
 					int nz = ps.nx;
