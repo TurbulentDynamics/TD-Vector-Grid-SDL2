@@ -2220,17 +2220,11 @@ int main(int argc, char **argv)
 	useColor ^= CmdOptionExists(argv, argv + argc, "-color");
 	useSpeed ^= CmdOptionExists(argv, argv + argc, "-speed");
 
-	if (offScreen){
-		if ((w || CmdOptionExists(argv, argv + argc, "-w")) && (h || CmdOptionExists(argv, argv + argc, "-h"))){
-			OverrideOption(w, GetCmdOption(argv, argv + argc, "-w"));
-			OverrideOption(h, GetCmdOption(argv, argv + argc, "-h"));
-			screenW = atoi(w);
-			screenH = atoi(h);
-		}
-		else{
-			fprintf(stdout,"Please specify render resolution using -w and -h\n");
-			return 1;
-		}
+	if ((w || CmdOptionExists(argv, argv + argc, "-w")) && (h || CmdOptionExists(argv, argv + argc, "-h"))){
+		OverrideOption(w, GetCmdOption(argv, argv + argc, "-w"));
+		OverrideOption(h, GetCmdOption(argv, argv + argc, "-h"));
+		screenW = atoi(w);
+		screenH = atoi(h);
 	}
 
 	if (centerX){
