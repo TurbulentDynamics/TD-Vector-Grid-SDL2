@@ -908,13 +908,7 @@ bool ReadMergeInput(char const *dir, char const *nameRoot, int ngx, int ngy, int
 			{
 				for (int idk = 0; idk < ngz; idk++)
 				{
-					char filename[300];
-					sprintf(filename, "%s/%s.%i.%i.%i.vvf", dir, nameRoot, idi, idj, idk);
-
-					printf("Opening %s", filename);
-					if (!ReadInputFile_FULL(filename)) return false;
-					printf(", Done.\n", filename);
-
+					bool fileLoaded = false;
 					auto nodeBegin = make_int3(
 						idi * nx,
 						idj * ny,
@@ -948,6 +942,16 @@ bool ReadMergeInput(char const *dir, char const *nameRoot, int ngx, int ngy, int
 								if (nodeBegin.x <= x && nodeBegin.y <= y && nodeBegin.z <= z &&
 									x < nodeEnd.x && y < nodeEnd.y && z < nodeEnd.z)
 								{
+									if (!fileLoaded)
+									{
+										char filename[300];
+										sprintf(filename, "%s/%s.%i.%i.%i.vvf", dir, nameRoot, idi, idj, idk);
+										printf("Opening %s", filename);
+										if (!ReadInputFile_FULL(filename)) return false;
+										printf(", Done.\n", filename);
+										fileLoaded = true;
+									}
+
 									auto mergedIndex = slice.begin + (*pZ * slice.points.size()) + iPoint;
 									auto nodePos = make_int3(
 										x - nodeBegin.x,
