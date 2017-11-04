@@ -49,6 +49,7 @@ bool showParams = false;
 bool offScreen = false;
 bool useColor = false;
 bool useSpeed = false;
+bool useInPlane = false;
 
 const char* programName = "VectorViz v1.00";
 
@@ -806,6 +807,7 @@ bool ReadMergeInput(char const *dir, char const *nameRoot, int ngx, int ngy, int
 			std::vector<int2> points;
 			int h;
 			int axis;
+			Vec normal;
 			bool isAngle;
 			int param;
 			int begin;
@@ -837,6 +839,24 @@ bool ReadMergeInput(char const *dir, char const *nameRoot, int ngx, int ngy, int
 			auto rad = angle / 180.f * PI;
 			auto s = sin(rad);
 			auto c = cos(rad);
+			auto normal = Vec((axis == 2) ? 1 : 0, (axis == 0) ? 1 : 0, (axis == 1) ? 1 : 0);
+			slice.normal = normal;
+			if (axis == 0)
+			{
+				slice.normal.y = c;
+				slice.normal.z = -s;
+			}
+			else if (axis == 1)
+			{
+				slice.normal.x = s;
+				slice.normal.z = -c;
+			}
+			else if (axis == 2)
+			{
+				slice.normal.x = c;
+				slice.normal.y = -s;
+			}
+
 			if (fabs(s) / cy > fabs(c) / cx)
 			{
 				c = c / s * cy;
@@ -884,6 +904,7 @@ bool ReadMergeInput(char const *dir, char const *nameRoot, int ngx, int ngy, int
 
 			slice.h = h;
 			slice.axis = (plane + 2) % 3;
+			slice.normal = Vec((plane == 0) ? 1 : 0, (plane == 1) ? 1 : 0, (plane == 2) ? 1 : 0);
 			slice.isAngle = false;
 			slice.param = pos;
 		}
@@ -958,7 +979,13 @@ bool ReadMergeInput(char const *dir, char const *nameRoot, int ngx, int ngy, int
 										y - nodeBegin.y,
 										z - nodeBegin.z);
 									auto nodeIndex =  ((nodePos.x * ny) + nodePos.y) * nx + nodePos.z;
-
+									if (useInPlane)
+									{
+										Vec projPos = gridVector[nodeIndex].v;
+										auto d = DotProduct(projPos, slice.normal);
+										projPos = Vec(projPos.x - d * slice.normal.x, projPos.y - d * slice.normal.y, projPos.z - d * slice.normal.z);
+										gridVector[nodeIndex].v = projPos;
+									}
 									mergedGridVector[mergedIndex] = gridVector[nodeIndex];
 									mergedGridVector[mergedIndex].indices = ((uint64_t)x << 42) + ((uint64_t)y << 21) + z;
 								}
@@ -1880,6 +1907,7 @@ int main(int argc, char **argv)
 	char *intensity = nullptr;
 	char *time = nullptr;
 	char *dump = nullptr;
+	char *inPlane = nullptr;
 	char *w = nullptr;
 	char *h = nullptr;
 
@@ -2013,6 +2041,7 @@ int main(int argc, char **argv)
 			std::make_pair("color", &useColor),
 			std::make_pair("offscreen", &offScreen),
 			std::make_pair("speed", &useSpeed),
+			std::make_pair("inPlane", &useInPlane),
 		};
 		std::pair<char const *, Sip::YAMLDocumentUTF8::Node**> subNodes[] =
 		{
@@ -2223,6 +2252,7 @@ int main(int argc, char **argv)
 	offScreen  ^= CmdOptionExists(argv, argv + argc, "-offscreen");
 	useColor ^= CmdOptionExists(argv, argv + argc, "-color");
 	useSpeed ^= CmdOptionExists(argv, argv + argc, "-speed");
+	useInPlane ^= CmdOptionExists(argv, argv + argc, "-inPlane");
 
 	if ((w || CmdOptionExists(argv, argv + argc, "-w")) && (h || CmdOptionExists(argv, argv + argc, "-h"))){
 		OverrideOption(w, GetCmdOption(argv, argv + argc, "-w"));
