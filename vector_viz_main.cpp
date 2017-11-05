@@ -736,7 +736,7 @@ bool merge_native_full(const char *dirname, char const *nameRoot, int ngx, int n
 
 				printf("Opening %s", filename);
 				if (!ReadInputFile_FULL(filename)) return false;
-				printf(", Done.\n", filename);
+				printf(", Done.\n");
 
 				//THIS COUNTS THROUGH THE NODE.  THIS IS NOT THE SAME AS SLICE OR AXIS
 				for (int node_i = 0; node_i < nx; node_i++)
@@ -969,7 +969,7 @@ bool ReadMergeInput(char const *dir, char const *nameRoot, int ngx, int ngy, int
 										sprintf(filename, "%s/%s.%i.%i.%i.vvf", dir, nameRoot, idi, idj, idk);
 										printf("Opening %s", filename);
 										if (!ReadInputFile_FULL(filename)) return false;
-										printf(", Done.\n", filename);
+										printf(", Done.\n");
 										fileLoaded = true;
 									}
 
@@ -1952,12 +1952,12 @@ int main(int argc, char **argv)
 
 		char *nameRoot = nullptr;
 		char *dir = nullptr;
-		char *ngxStr = "3";
-		char *ngyStr = "3";
-		char *ngzStr = "3";
-		char *snxStr = "60";
-		char *snyStr = "60";
-		char *snzStr = "60";
+		char *ngxStr = nullptr;
+		char *ngyStr = nullptr;
+		char *ngzStr = nullptr;
+		char *snxStr = nullptr;
+		char *snyStr = nullptr;
+		char *snzStr = nullptr;
 		char *xcutStr = nullptr;
 		char *ycutStr = nullptr;
 		char *zcutStr = nullptr;
