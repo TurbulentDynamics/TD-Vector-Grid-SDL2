@@ -30,7 +30,7 @@ DEVICE float VecLen(Vec a);
 DEVICE Vec VecMul(Vec v,float t);
 DEVICE Vec VecUnit(Vec a);
 DEVICE Vec lerp(Vec v0, Vec v1, float t);
-DEVICE PointProjection PerspProj(Vec t, Camera k, bool force);
+DEVICE PointProjection Proj(Vec t, Camera k, bool force);
 DEVICE extern float rainbow[6][3];
 
 DEVICE static float calculateSignedArea(const float2 tri[3])
@@ -102,10 +102,10 @@ void QuadRenderer(
 
 	PointProjection vertices[4] =
 	{
-		PerspProj(VecMul(pDesc->vertices[0], scale), cam, true),
-		PerspProj(VecMul(pDesc->vertices[1], scale), cam, true),
-		PerspProj(VecMul(pDesc->vertices[2], scale), cam, true),
-		PerspProj(VecMul(pDesc->vertices[3], scale), cam, true),
+		Proj(VecMul(pDesc->vertices[0], scale), cam, true),
+		Proj(VecMul(pDesc->vertices[1], scale), cam, true),
+		Proj(VecMul(pDesc->vertices[2], scale), cam, true),
+		Proj(VecMul(pDesc->vertices[3], scale), cam, true),
 	};
 
 	if (vertices[0].zdistRec <= 0 && vertices[1].zdistRec <= 0 && vertices[2].zdistRec <= 0 && vertices[3].zdistRec <= 0) return;

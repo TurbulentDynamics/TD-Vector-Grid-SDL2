@@ -51,4 +51,6 @@ void CallMovingPointsRenderer(
 		bool useSpeed
 		);
 
+void SetOrtho(bool ortho);
+
 #endif

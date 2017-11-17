@@ -71,10 +71,11 @@ __device__ float rainbow[][3] =
   { 1.0f, 0.0f, 1.0f },
 };
 
+__device__ bool useOrtho = false;
 
 
 __device__
-PointProjection PerspProj(Vec t, Camera k, bool force = false)
+PointProjection Proj(Vec t, Camera k, bool force = false)
 {	
 	PointProjection ret;
 	Vec diff=VecSub(t,k.eye);        
@@ -84,7 +85,7 @@ PointProjection PerspProj(Vec t, Camera k, bool force = false)
 		ret.zdistRec = -1;
 		return ret;		
 		}
-	ret.zdistRec=1.0f/zdist;
+	ret.zdistRec=1.0f / (useOrtho ? VecLen(k.eye) : zdist);
 	Vec proj=VecMul(diff, k.screenDist * ret.zdistRec);		
 	proj =VecAdd(proj, k.upLeftCornerTrans);
 	ret.x = DotProduct(proj, k.xd);
@@ -141,7 +142,7 @@ void MovingPointsRenderer(
 		if (pos>1) continue;		
 		Vec p = VecAdd(beg,VecMul(v,pos*lengthMultiplier));
 		
-		PointProjection proj = PerspProj(p,cam);
+		PointProjection proj = Proj(p,cam);
 		
 		if (proj.zdistRec<=0) continue;
 		float brightness = mpBrig * proj.zdistRec * proj.zdistRec * brightnessMultiplier;
@@ -169,6 +170,11 @@ void MovingPointsRenderer(
 
 } //namespace cuda_renderer ends
 
+
+void SetOrtho(bool ortho)
+{
+	cudaMemcpyToSymbol(cuda_renderer::useOrtho, &ortho, sizeof(ortho));
+}
 
 void CallMovingPointsRenderer(		
 		Camera cam,

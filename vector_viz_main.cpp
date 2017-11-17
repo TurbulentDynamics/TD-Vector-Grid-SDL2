@@ -52,6 +52,7 @@ bool offScreen = false;
 bool useColor = false;
 bool useSpeed = false;
 bool useInPlane = false;
+bool useOrtho = false;
 bool showHeatmap = false;
 
 const char* programName = "VectorViz v1.00";
@@ -258,24 +259,6 @@ Camera CreateCamera(CameraArrangement pk)
 	k.eye = VecAdd(k.eye, pk.centerTranslation);
 	
 	return k;
-}
-
-PointProjection PerspProj(Vec t, Camera k)
-{	
-	PointProjection ret;
-	Vec diff=VecSub(t,k.eye);        
-	float zdist = DotProduct(diff, k.dir);	
-	
-	if (zdist < 0.1f) {
-		ret.zdistRec = -1;
-		return ret;		
-		}
-	ret.zdistRec=1.0f/zdist;
-	Vec proj=VecMul(diff, k.screenDist * ret.zdistRec);		
-	proj =VecAdd(proj, k.upLeftCornerTrans);
-	ret.x = DotProduct(proj, k.xd);
-	ret.y = DotProduct(proj, k.yd);	
-	return ret;        
 }
 
 struct IntensityBuffer
@@ -2186,6 +2169,7 @@ int main(int argc, char **argv)
 			std::make_pair("speed", &useSpeed),
 			std::make_pair("inPlane", &useInPlane),
 			std::make_pair("heatmap", &showHeatmap),
+			std::make_pair("orthographic", &useOrtho),
 		};
 		std::pair<char const *, Sip::YAMLDocumentUTF8::Node**> subNodes[] =
 		{
@@ -2400,6 +2384,9 @@ int main(int argc, char **argv)
 	useColor ^= CmdOptionExists(argv, argv + argc, "-color");
 	useSpeed ^= CmdOptionExists(argv, argv + argc, "-speed");
 	useInPlane ^= CmdOptionExists(argv, argv + argc, "-inPlane");
+	useOrtho ^= CmdOptionExists(argv, argv + argc, "-orthographic");
+
+	SetOrtho(useOrtho);
 
 	if ((w || CmdOptionExists(argv, argv + argc, "-w")) && (h || CmdOptionExists(argv, argv + argc, "-h"))){
 		OverrideOption(w, GetCmdOption(argv, argv + argc, "-w"));
