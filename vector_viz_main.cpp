@@ -1749,6 +1749,18 @@ void EventLoop()
 					ps.sys.isKeyEndPressed=true;
 					ps.pressKeyEndTime.Reset();
 					}
+				if (sym==SDLK_r){
+					cameraArrange.rotLR = 0;
+					cameraArrange.rotUD = 0;
+					}
+				if (sym==SDLK_e){
+					cameraArrange.rotLR += 45;
+					if (cameraArrange.rotLR >= 360) cameraArrange.rotLR -= 360;
+					}
+				if (sym==SDLK_q){
+					cameraArrange.rotLR -= 45;
+					if (cameraArrange.rotLR < 0) cameraArrange.rotLR += 360;
+					}
 				if (sym==SDLK_KP_6){
 					ps.sys.isKeyPadRight=true;
 					ps.pressKeyPadRightTime.Reset();
