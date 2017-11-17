@@ -1,3 +1,5 @@
+#ifndef MP_RENDERER_H_INCLUDED
+#define MP_RENDERER_H_INCLUDED
 
 struct Vec
 {
@@ -26,6 +28,13 @@ struct SMpBufDesc
 	unsigned startTime;
 };
 
+struct PointProjection
+{
+	float x;
+	float y;
+	float zdistRec;
+};
+
 
 void CallMovingPointsRenderer(		
 		Camera cam,
@@ -42,4 +51,4 @@ void CallMovingPointsRenderer(
 		bool useSpeed
 		);
 
-
+#endif

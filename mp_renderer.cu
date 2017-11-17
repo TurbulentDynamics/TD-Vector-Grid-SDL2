@@ -56,17 +56,10 @@ Vec VecUnit(Vec a)
 }
 
 __device__
-inline Vec lerp(Vec v0, Vec v1, float t)
+Vec lerp(Vec v0, Vec v1, float t)
 {
     return VecAdd(VecMul(v0, (1-t)), VecMul(v1, t));
 }
-
-struct PointProjection
-{
-	float x;
-	float y;
-	float zdistRec;
-};
 
 __device__ float rainbow[][3] =
 {
@@ -81,13 +74,13 @@ __device__ float rainbow[][3] =
 
 
 __device__
-PointProjection PerspProj(Vec t, Camera k)
+PointProjection PerspProj(Vec t, Camera k, bool force = false)
 {	
 	PointProjection ret;
 	Vec diff=VecSub(t,k.eye);        
 	float zdist = DotProduct(diff, k.dir);	
 	
-	if (zdist < 0.1f) {
+	if (!force && zdist < 0.1f) {
 		ret.zdistRec = -1;
 		return ret;		
 		}

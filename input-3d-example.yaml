@@ -24,7 +24,6 @@ output:
     position:
       - 17
       - 20
-      #- 20
       #- 16
       #- 30
       #- 27
@@ -40,6 +39,7 @@ output:
   # for writing out entire cube
   #filename: plot_full_vector_step_1000.vvf
 
+  heatmap: true
   inPlane: true
   params: true
   color: true

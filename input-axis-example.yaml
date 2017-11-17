@@ -9,6 +9,7 @@ input:
 
 
 output:
+  heatmap: true
   params: true
   color: true
   offscreen:
