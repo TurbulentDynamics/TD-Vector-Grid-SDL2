@@ -43,6 +43,7 @@ float centerZInit = 0;
 float brightnessInit = 100.0f;
 float lengthInit = 100.0f;
 float maxLength = 0;
+float colorScale = 1.0f;
 int initialDotDensity = -2;
 int timeToSimulate = 0;
 
@@ -1374,7 +1375,7 @@ void DrawSDL()
 		ps.curTime,
 		ps.exposure/ps.totalBrightness*cBrightnessMultiplier,
 		ps.length*cLengthMultiplier,
-		maxLength,
+		maxLength * colorScale,
 		useColor,
 		useSpeed
 		);	
@@ -1389,7 +1390,7 @@ void DrawSDL()
 			screenW,
 			screenH,
 			ps.exposure/ps.totalBrightness*cBrightnessMultiplier,
-			maxLength,
+			maxLength * colorScale,
 			gridSize
 			);
 	}
@@ -1456,7 +1457,8 @@ void DrawSDL()
 		DrawString(0, 168,"exposure: %2.1f", ps.exposure);
 		DrawString(0, 192,"length: %2.1f", ps.length);
 		DrawString(0, 216,"intensity: %d", ps.pointCntExp);
-		DrawString(0, 240,"time: %d", ps.curTime);
+		DrawString(0, 240,"colorScale: %2.2f", colorScale);
+		DrawString(0, 264,"time: %d", ps.curTime);
 
 		fprintf(stdout, "centerX: %2.1f\n", cameraArrange.centerTranslation.x);
 		fprintf(stdout, "centerY: %2.1f\n", cameraArrange.centerTranslation.y);
@@ -1467,6 +1469,7 @@ void DrawSDL()
 		fprintf(stdout, "exposure: %2.1f\n", ps.exposure);
 		fprintf(stdout, "length: %2.1f\n", ps.length);
 		fprintf(stdout, "intensity: %d\n", ps.pointCntExp);
+		fprintf(stdout, "colorScale: %2.2f\n", colorScale);
 		fprintf(stdout, "time: %d\n", ps.curTime);
 	}
 
@@ -1749,9 +1752,11 @@ void EventLoop()
 					ps.sys.isKeyEndPressed=true;
 					ps.pressKeyEndTime.Reset();
 					}
-				if (sym==SDLK_r){
-					cameraArrange.rotLR = 0;
-					cameraArrange.rotUD = 0;
+				if (sym==SDLK_t){
+					colorScale += 0.01;
+					}
+				if (sym==SDLK_g){
+					if (colorScale > 0.02) colorScale -= 0.01;
 					}
 				if (sym==SDLK_e){
 					cameraArrange.rotLR += 45;
@@ -2043,6 +2048,7 @@ int main(int argc, char **argv)
 	char *exposure = nullptr;
 	char *length = nullptr;
 	char *intensity = nullptr;
+	char *colorscale = nullptr;
 	char *time = nullptr;
 	char *dump = nullptr;
 	char *inPlane = nullptr;
@@ -2168,6 +2174,7 @@ int main(int argc, char **argv)
 			std::make_pair("exposure",  &exposure),
 			std::make_pair("length",    &length),
 			std::make_pair("intensity", &intensity),
+			std::make_pair("colorScale",&colorscale),
 			std::make_pair("time",      &time),
 			std::make_pair("dump",      &dump),
 			std::make_pair("name_root", &outNameRoot),
@@ -2388,6 +2395,7 @@ int main(int argc, char **argv)
 	OverrideOption(exposure,     GetCmdOption(argv, argv + argc, "-exposure"));
 	OverrideOption(length,       GetCmdOption(argv, argv + argc, "-length"));
 	OverrideOption(intensity,    GetCmdOption(argv, argv + argc, "-intensity"));
+	OverrideOption(colorscale,   GetCmdOption(argv, argv + argc, "-colorScale"));
 	OverrideOption(time,         GetCmdOption(argv, argv + argc, "-time"));
 	OverrideOption(dump,         GetCmdOption(argv, argv + argc, "-dump"));
 
@@ -2441,6 +2449,10 @@ int main(int argc, char **argv)
 
 	if (intensity){
 		initialDotDensity = atof(intensity);
+	}
+
+	if (colorscale){
+		colorScale = atof(colorscale);
 	}
 
 	if (time){
