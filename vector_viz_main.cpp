@@ -12,6 +12,7 @@
 #include <cuda_runtime.h>
 
 #include "mp_renderer.h"
+#include "quad_renderer.h"
 #include "SipYAML.hpp"
 
 float PI=3.1415926535897932384f;
@@ -31,6 +32,7 @@ const float cLengthMax = 900.0f;
 const float cLengthStep = 0.003f;
 
 const int cudaMaxPoints = 24*1000*1000;
+float gridSize = 1;
 
 float rotLRInit = 0;
 float rotUDInit = -20;
@@ -41,6 +43,7 @@ float centerZInit = 0;
 float brightnessInit = 100.0f;
 float lengthInit = 100.0f;
 float maxLength = 0;
+float colorScale = 1.0f;
 int initialDotDensity = -2;
 int timeToSimulate = 0;
 
@@ -50,6 +53,8 @@ bool offScreen = false;
 bool useColor = false;
 bool useSpeed = false;
 bool useInPlane = false;
+bool useOrtho = false;
+bool showHeatmap = false;
 
 const char* programName = "VectorViz v1.00";
 
@@ -173,6 +178,12 @@ inline Vec VecMul(Vec v,float t) {
 inline Vec VecUnit(Vec a) { 
 	return VecMul(a, 1.0f/VecLen(a));
 	}
+inline Vec VecCross(Vec a, Vec b) {
+	return Vec(
+		a.y * b.z - a.z * b.y,
+		a.z * b.x - a.x * b.z,
+		a.x * b.y - a.y * b.z);
+}
 
 Vec RotUD(Vec v, float fi) //elevation
 {
@@ -208,8 +219,9 @@ struct MovingPoint
 
 std::vector<MovingPoint> createdMp;
 std::vector<float> separatedMp;
-std::vector<SMpBufDesc> mpBufDesc;
 std::vector<SMpBufDesc> mpBufDescCuda;
+std::vector<SQuadBufDesc> quadBufDescCuda;
+std::vector<float> quadData;
 
 
 struct SCudaMemory
@@ -217,7 +229,8 @@ struct SCudaMemory
 	float* mpData;
 	SMpBufDesc* mpBufDesc;
 	unsigned* intensityRaster;
-	
+	SQuadBufDesc *quadBufDesc;
+	float *quadData;
 } cudaMem;
 
 struct CameraArrangement
@@ -247,31 +260,6 @@ Camera CreateCamera(CameraArrangement pk)
 	k.eye = VecAdd(k.eye, pk.centerTranslation);
 	
 	return k;
-}
-
-struct PointProjection
-{
-	float x;
-	float y;
-	float zdistRec;
-};
-
-PointProjection PerspProj(Vec t, Camera k)
-{	
-	PointProjection ret;
-	Vec diff=VecSub(t,k.eye);        
-	float zdist = DotProduct(diff, k.dir);	
-	
-	if (zdist < 0.1f) {
-		ret.zdistRec = -1;
-		return ret;		
-		}
-	ret.zdistRec=1.0f/zdist;
-	Vec proj=VecMul(diff, k.screenDist * ret.zdistRec);		
-	proj =VecAdd(proj, k.upLeftCornerTrans);
-	ret.x = DotProduct(proj, k.xd);
-	ret.y = DotProduct(proj, k.yd);	
-	return ret;        
 }
 
 struct IntensityBuffer
@@ -483,6 +471,7 @@ bool ReadInputFile(const char* inFileName)
 	ps.ny=ny;
 	ps.nz=nx;
 	gridVector.resize(nx*ny);
+	if (showHeatmap) quadData.resize(nx * ny);
 	
 	for(int yi=0; yi<ny; yi++)
 		for(int xi=0; xi<nx; xi++){
@@ -502,9 +491,24 @@ bool ReadInputFile(const char* inFileName)
 			int ignore = fscanf(inFile,"%f%f%f%f",&u,&x,&y,&z);
 			gridVector[i].v = Vec( x, y, z);
 			gridVector[i].indices= (xi) + ((uint64_t)yi<<21);
-			maxLength = std::max(maxLength, VecLen(gridVector[i].v));
+			auto length = VecLen(gridVector[i].v);
+			maxLength = std::max(maxLength, length);
+			if (showHeatmap) quadData[i] = length;
 			}	
 	
+	if (showHeatmap)
+	{
+		quadBufDescCuda.resize(1);
+		auto &desc = quadBufDescCuda.front();
+		desc.gridWidth = nx;
+		desc.gridHeight = ny;
+		desc.vertices[0] = Vec(0.f, nx *  0.5f, ny * -0.5f);
+		desc.vertices[1] = Vec(0.f, nx * -0.5f, ny * -0.5f);
+		desc.vertices[2] = Vec(0.f, nx *  0.5f, ny *  0.5f);
+		desc.vertices[3] = Vec(0.f, nx * -0.5f, ny *  0.5f);
+		desc.dataOffset = 0;
+	}
+
 	fclose(inFile);
 	return true;
 }
@@ -547,6 +551,7 @@ bool ReadInputFile_FULL(const char* inFileName)
 	ReadLineBeg(inFile,str,textLineLength); //skip rest of the line
 
 	gridVector.resize(nx * ny * nz);
+	if (showHeatmap) quadData.resize(nx * ny * nz);
 
 	for (int zi=0; zi<nz; zi++)
 		for (int yi=0; yi<ny; yi++)
@@ -568,7 +573,9 @@ bool ReadInputFile_FULL(const char* inFileName)
 
 
 				gridVector[pos].v = Vec( x, y, z);
-				maxLength = std::max(maxLength, VecLen(gridVector[pos].v));
+				auto length = VecLen(gridVector[pos].v);
+				maxLength = std::max(maxLength, length);
+				if (showHeatmap) quadData[pos] = length;
 
 				//gridVector[pos].indices= (yi<<16)+xi;
 			}
@@ -614,7 +621,9 @@ bool merge_native_slice(const char *dirname, char const *nameRoot, int startidi,
 	int ny = sny / ngy;
 
 	std::vector<VectorData> mergedGridVector;
+	std::vector<float> mergedQuadData;
 	mergedGridVector.resize(snx * sny);
+	if (showHeatmap) mergedQuadData.resize(snx * sny);
 
 	for (int idi = startidi; idi <= endidi; idi++)
 	{
@@ -642,6 +651,7 @@ bool merge_native_slice(const char *dirname, char const *nameRoot, int startidi,
 
 						mergedGridVector[merged_i].v = gridVector[i].v;
 						mergedGridVector[merged_i].indices = (merged_yi) + ((uint64_t)merged_xi<<21);
+						if (showHeatmap) mergedQuadData[merged_i] = quadData[i];
 					}
 				}
 			}
@@ -653,6 +663,19 @@ bool merge_native_slice(const char *dirname, char const *nameRoot, int startidi,
 	ps.nz = snx;
 
 	gridVector = mergedGridVector;
+	if (showHeatmap)
+	{
+		quadData = mergedQuadData;
+		quadBufDescCuda.resize(1);
+		auto &desc = quadBufDescCuda.front();
+		desc.gridWidth = snx;
+		desc.gridHeight = sny;
+		desc.vertices[0] = Vec(0.f, snx * -0.5f, sny *  0.5f);
+		desc.vertices[1] = Vec(0.f, snx * -0.5f, sny * -0.5f);
+		desc.vertices[2] = Vec(0.f, snx *  0.5f, sny *  0.5f);
+		desc.vertices[3] = Vec(0.f, snx *  0.5f, sny * -0.5f);
+		desc.dataOffset = 0;
+	}
 
 	if (outFilename)
 	{
@@ -668,7 +691,9 @@ bool merge_native_axis(const char *dirname, char const *nameRoot, int startidi, 
 	int ny = sny / ngy;
 
 	std::vector<VectorData> mergedGridVector;
+	std::vector<float> mergedQuadData;
 	mergedGridVector.resize(snx * snz);
+	if (showHeatmap) mergedQuadData.resize(snx * sny);
 
 	for (int idi = startidi; idi <= endidi; idi++)
 	{
@@ -696,6 +721,7 @@ bool merge_native_axis(const char *dirname, char const *nameRoot, int startidi, 
 
 						mergedGridVector[merged_i].v = gridVector[i].v;
 						mergedGridVector[merged_i].indices= ((uint64_t)merged_yi<<42) + ((uint64_t)merged_xi<<21);
+						if (showHeatmap) mergedQuadData[merged_i] = quadData[i];
 					}
 				}
 			}
@@ -707,6 +733,20 @@ bool merge_native_axis(const char *dirname, char const *nameRoot, int startidi, 
 	ps.nz = 1;
 
 	gridVector = mergedGridVector;
+
+	if (showHeatmap)
+	{
+		quadData = mergedQuadData;
+		quadBufDescCuda.resize(1);
+		auto &desc = quadBufDescCuda.front();
+		desc.gridWidth = snx;
+		desc.gridHeight = sny;
+		desc.vertices[0] = Vec(sny *  0.5f, snx * -0.5f, 0.f);
+		desc.vertices[1] = Vec(sny * -0.5f, snx * -0.5f, 0.f);
+		desc.vertices[2] = Vec(sny *  0.5f, snx *  0.5f, 0.f);
+		desc.vertices[3] = Vec(sny * -0.5f, snx *  0.5f, 0.f);
+		desc.dataOffset = 0;
+	}
 
 	if (outFilename)
 	{
@@ -808,6 +848,7 @@ bool ReadMergeInput(char const *dir, char const *nameRoot, int ngx, int ngy, int
 			int h;
 			int axis;
 			Vec normal;
+			Vec xAxis;
 			bool isAngle;
 			int param;
 			int begin;
@@ -841,6 +882,8 @@ bool ReadMergeInput(char const *dir, char const *nameRoot, int ngx, int ngy, int
 			auto c = cos(rad);
 			auto normal = Vec((axis == 2) ? 1 : 0, (axis == 0) ? 1 : 0, (axis == 1) ? 1 : 0);
 			slice.normal = normal;
+			auto s2 = s;
+			auto c2 = c;
 			if (axis == 0)
 			{
 				slice.normal.y = c;
@@ -861,14 +904,37 @@ bool ReadMergeInput(char const *dir, char const *nameRoot, int ngx, int ngy, int
 			{
 				c = c / s * cy;
 				s = cy;
+				c2 = c2 / s2 * by;
+				s2 = by;
 			}
 			else
 			{
 				s = s / c * cx;
 				c = cx;
+				s2 = s2 / c2 * bx;
+				c2 = bx;
 			}
 
-			RasterLine(slice.points, cx - c, cy - s, cx + c, cy + s);
+			slice.xAxis = Vec(0, 0, 0);
+			if (axis == 0)
+			{
+				slice.xAxis.y = s2;
+				slice.xAxis.z = c2;
+				RasterLine(slice.points, cx - s, cy - c, cx + s, cy + c);
+			}
+			else if (axis == 1)
+			{
+				slice.xAxis.x = c2;
+				slice.xAxis.z = s2;
+				RasterLine(slice.points, cx - c, cy - s, cx + c, cy + s);
+			}
+			else if (axis == 2)
+			{
+				slice.xAxis.x = s2;
+				slice.xAxis.y = c2;
+				RasterLine(slice.points, cx - s, cy - c, cx + s, cy + c);
+			}
+
 			slice.h = h;
 			slice.axis = axis;
 			slice.isAngle = true;
@@ -904,6 +970,7 @@ bool ReadMergeInput(char const *dir, char const *nameRoot, int ngx, int ngy, int
 
 			slice.h = h;
 			slice.axis = (plane + 2) % 3;
+			slice.xAxis = Vec((plane == 2) * snx, (plane == 0) * sny, (plane == 1) * snz);
 			slice.normal = Vec((plane == 0) ? 1 : 0, (plane == 1) ? 1 : 0, (plane == 2) ? 1 : 0);
 			slice.isAngle = false;
 			slice.param = pos;
@@ -918,6 +985,7 @@ bool ReadMergeInput(char const *dir, char const *nameRoot, int ngx, int ngy, int
 		}
 
 		std::vector<VectorData> mergedGridVector(gridSize);
+		std::vector<float> mergedQuadData(showHeatmap ? gridSize : 0);
 
 		int nx = snx/ngx;
 		int ny = sny/ngy;
@@ -988,6 +1056,7 @@ bool ReadMergeInput(char const *dir, char const *nameRoot, int ngx, int ngy, int
 									}
 									mergedGridVector[mergedIndex] = gridVector[nodeIndex];
 									mergedGridVector[mergedIndex].indices = ((uint64_t)x << 42) + ((uint64_t)y << 21) + z;
+									if (showHeatmap) mergedQuadData[mergedIndex] = quadData[nodeIndex];
 								}
 							}
 						}
@@ -1019,6 +1088,33 @@ bool ReadMergeInput(char const *dir, char const *nameRoot, int ngx, int ngy, int
 		ps.nz = snz;
 
 		gridVector = mergedGridVector;
+
+		if (showHeatmap)
+		{
+			quadData = mergedQuadData;
+			quadBufDescCuda.resize(0);
+			for (auto &slice: slices)
+			{
+				quadBufDescCuda.emplace_back();
+				auto &desc = quadBufDescCuda.back();
+				desc.gridWidth = slice.points.size();
+				desc.gridHeight = slice.h;
+				Vec yAxis(slice.axis == 0, slice.axis == 1, slice.axis == 2);
+				Vec zAxisSize = slice.isAngle
+					? Vec(0, 0, 0)
+					: Vec(
+						slice.param - (snx - 1) * 0.5f,
+						slice.param - (sny - 1) * 0.5f,
+						slice.param - (snz - 1) * 0.5f);
+				Vec zAxis = Vec(slice.normal.x * zAxisSize.x, slice.normal.y * zAxisSize.y, slice.normal.z * zAxisSize.z);
+				desc.vertices[0] = VecAdd(VecAdd(VecMul(slice.xAxis, -0.5f), VecMul(yAxis, slice.h *  0.5f)), zAxis);
+				desc.vertices[1] = VecAdd(VecAdd(VecMul(slice.xAxis, -0.5f), VecMul(yAxis, slice.h * -0.5f)), zAxis);
+				desc.vertices[2] = VecAdd(VecAdd(VecMul(slice.xAxis,  0.5f), VecMul(yAxis, slice.h *  0.5f)), zAxis);
+				desc.vertices[3] = VecAdd(VecAdd(VecMul(slice.xAxis,  0.5f), VecMul(yAxis, slice.h * -0.5f)), zAxis);
+				desc.dataOffset = slice.begin;
+			}
+		}
+
 		return true;
 	}
 
@@ -1145,7 +1241,7 @@ int CreateMovingPoints(Camera cam, int processPointsCount)
 {				
 	if(ps.isPaused ) return 0;
 	
-	const float gridSize = 130.0f/pow(1.0f*ps.nx*ps.ny*ps.nz, 1.f/3);
+	gridSize = 130.0f/pow(1.0f*ps.nx*ps.ny*ps.nz, 1.f/3);
 	
 	const int gridVectorN = int(gridVector.size());						
 	//ps.pointCntExp=-10;
@@ -1279,10 +1375,26 @@ void DrawSDL()
 		ps.curTime,
 		ps.exposure/ps.totalBrightness*cBrightnessMultiplier,
 		ps.length*cLengthMultiplier,
-		maxLength,
+		maxLength * colorScale,
 		useColor,
 		useSpeed
 		);	
+	if (showHeatmap)
+	{
+		CallQuadRenderer(
+			cam,
+			cudaMem.quadData,
+			cudaMem.quadBufDesc,
+			(int)quadBufDescCuda.size(),
+			cudaMem.intensityRaster,
+			screenW,
+			screenH,
+			ps.exposure/ps.totalBrightness*cBrightnessMultiplier,
+			maxLength * colorScale,
+			gridSize
+			);
+	}
+
 	cudaStreamQuery(0);
 	
 	const int processVectorsCount = 600*1000;
@@ -1345,7 +1457,8 @@ void DrawSDL()
 		DrawString(0, 168,"exposure: %2.1f", ps.exposure);
 		DrawString(0, 192,"length: %2.1f", ps.length);
 		DrawString(0, 216,"intensity: %d", ps.pointCntExp);
-		DrawString(0, 240,"time: %d", ps.curTime);
+		DrawString(0, 240,"colorScale: %2.2f", colorScale);
+		DrawString(0, 264,"time: %d", ps.curTime);
 
 		fprintf(stdout, "centerX: %2.1f\n", cameraArrange.centerTranslation.x);
 		fprintf(stdout, "centerY: %2.1f\n", cameraArrange.centerTranslation.y);
@@ -1356,6 +1469,7 @@ void DrawSDL()
 		fprintf(stdout, "exposure: %2.1f\n", ps.exposure);
 		fprintf(stdout, "length: %2.1f\n", ps.length);
 		fprintf(stdout, "intensity: %d\n", ps.pointCntExp);
+		fprintf(stdout, "colorScale: %2.2f\n", colorScale);
 		fprintf(stdout, "time: %d\n", ps.curTime);
 	}
 
@@ -1638,6 +1752,20 @@ void EventLoop()
 					ps.sys.isKeyEndPressed=true;
 					ps.pressKeyEndTime.Reset();
 					}
+				if (sym==SDLK_t){
+					colorScale += 0.01;
+					}
+				if (sym==SDLK_g){
+					if (colorScale > 0.02) colorScale -= 0.01;
+					}
+				if (sym==SDLK_e){
+					cameraArrange.rotLR += 45;
+					if (cameraArrange.rotLR >= 360) cameraArrange.rotLR -= 360;
+					}
+				if (sym==SDLK_q){
+					cameraArrange.rotLR -= 45;
+					if (cameraArrange.rotLR < 0) cameraArrange.rotLR += 360;
+					}
 				if (sym==SDLK_KP_6){
 					ps.sys.isKeyPadRight=true;
 					ps.pressKeyPadRightTime.Reset();
@@ -1805,6 +1933,21 @@ int InitCuda()
 		fprintf(stderr,"Out of GPU device memory\n");
 		return -1;
 		}	
+	if (showHeatmap)
+	{
+		cudaError=cudaMalloc((void**)&cudaMem.quadBufDesc, quadBufDescCuda.size() * sizeof(SQuadBufDesc));
+		if (cudaError!=cudaSuccess){
+			fprintf(stderr,"Out of GPU device memory\n");
+			return -1;
+			}
+		cudaMemcpy(cudaMem.quadBufDesc, quadBufDescCuda.data(), quadBufDescCuda.size() * sizeof(SQuadBufDesc), cudaMemcpyHostToDevice);
+		cudaError=cudaMalloc((void**)&cudaMem.quadData, quadData.size() * sizeof(float));
+		if (cudaError!=cudaSuccess){
+			fprintf(stderr,"Out of GPU device memory\n");
+			return -1;
+			}
+		cudaMemcpy(cudaMem.quadData, quadData.data(), quadData.size() * sizeof(float), cudaMemcpyHostToDevice);
+	}
 	
 	return 0;
 }
@@ -1906,6 +2049,7 @@ int main(int argc, char **argv)
 	char *exposure = nullptr;
 	char *length = nullptr;
 	char *intensity = nullptr;
+	char *colorscale = nullptr;
 	char *time = nullptr;
 	char *dump = nullptr;
 	char *inPlane = nullptr;
@@ -2031,6 +2175,7 @@ int main(int argc, char **argv)
 			std::make_pair("exposure",  &exposure),
 			std::make_pair("length",    &length),
 			std::make_pair("intensity", &intensity),
+			std::make_pair("colorScale",&colorscale),
 			std::make_pair("time",      &time),
 			std::make_pair("dump",      &dump),
 			std::make_pair("name_root", &outNameRoot),
@@ -2043,6 +2188,8 @@ int main(int argc, char **argv)
 			std::make_pair("offscreen", &offScreen),
 			std::make_pair("speed", &useSpeed),
 			std::make_pair("inPlane", &useInPlane),
+			std::make_pair("heatmap", &showHeatmap),
+			std::make_pair("orthographic", &useOrtho),
 		};
 		std::pair<char const *, Sip::YAMLDocumentUTF8::Node**> subNodes[] =
 		{
@@ -2089,6 +2236,8 @@ int main(int argc, char **argv)
 				}
 			}
 		}
+
+		showHeatmap ^= CmdOptionExists(argv, argv + argc, "-heatmap");
 
 		int plane = 0;
 		std::vector<int> position;
@@ -2154,6 +2303,7 @@ int main(int argc, char **argv)
 		}
 	}
 	else {
+	showHeatmap ^= CmdOptionExists(argv, argv + argc, "-heatmap");
 	bool isOk=ReadInputFile(inFileName);
 	if (!isOk) {
 		fprintf(stdout,"Error opening input file: %s\n", inFileName);		
@@ -2246,6 +2396,7 @@ int main(int argc, char **argv)
 	OverrideOption(exposure,     GetCmdOption(argv, argv + argc, "-exposure"));
 	OverrideOption(length,       GetCmdOption(argv, argv + argc, "-length"));
 	OverrideOption(intensity,    GetCmdOption(argv, argv + argc, "-intensity"));
+	OverrideOption(colorscale,   GetCmdOption(argv, argv + argc, "-colorScale"));
 	OverrideOption(time,         GetCmdOption(argv, argv + argc, "-time"));
 	OverrideOption(dump,         GetCmdOption(argv, argv + argc, "-dump"));
 
@@ -2254,6 +2405,9 @@ int main(int argc, char **argv)
 	useColor ^= CmdOptionExists(argv, argv + argc, "-color");
 	useSpeed ^= CmdOptionExists(argv, argv + argc, "-speed");
 	useInPlane ^= CmdOptionExists(argv, argv + argc, "-inPlane");
+	useOrtho ^= CmdOptionExists(argv, argv + argc, "-orthographic");
+
+	SetOrtho(useOrtho);
 
 	if ((w || CmdOptionExists(argv, argv + argc, "-w")) && (h || CmdOptionExists(argv, argv + argc, "-h"))){
 		OverrideOption(w, GetCmdOption(argv, argv + argc, "-w"));
@@ -2296,6 +2450,10 @@ int main(int argc, char **argv)
 
 	if (intensity){
 		initialDotDensity = atof(intensity);
+	}
+
+	if (colorscale){
+		colorScale = atof(colorscale);
 	}
 
 	if (time){

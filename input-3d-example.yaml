@@ -24,7 +24,6 @@ output:
     position:
       - 17
       - 20
-      #- 20
       #- 16
       #- 30
       #- 27
@@ -40,6 +39,7 @@ output:
   # for writing out entire cube
   #filename: plot_full_vector_step_1000.vvf
 
+  heatmap: true
   inPlane: true
   params: true
   color: true
@@ -55,6 +55,7 @@ output:
   exposure: 40
   length: 235.5
   intensity: -2
+  colorScale: 0.8
   time: 1000
   dump:
   speed:
