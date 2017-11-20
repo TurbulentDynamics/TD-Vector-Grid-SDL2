@@ -775,7 +775,7 @@ bool merge_native_full(const char *dirname, char const *nameRoot, int ngx, int n
 
 				printf("Opening %s", filename);
 				if (!ReadInputFile_FULL(filename)) return false;
-				printf(", Done.\n", filename);
+				printf(", Done.\n");
 
 				//THIS COUNTS THROUGH THE NODE.  THIS IS NOT THE SAME AS SLICE OR AXIS
 				for (int node_i = 0; node_i < nx; node_i++)
@@ -1036,7 +1036,7 @@ bool ReadMergeInput(char const *dir, char const *nameRoot, int ngx, int ngy, int
 										sprintf(filename, "%s/%s.%i.%i.%i.vvf", dir, nameRoot, idi, idj, idk);
 										printf("Opening %s", filename);
 										if (!ReadInputFile_FULL(filename)) return false;
-										printf(", Done.\n", filename);
+										printf(", Done.\n");
 										fileLoaded = true;
 									}
 
@@ -2032,6 +2032,7 @@ int main(int argc, char **argv)
 			printf("\tvector_viz  inputFile -centerX <val> -centerY <val> -centerZ <val> -rotLR <val> -rotUD <val> -distance <val> -exposure <val> -length <val> -intensity <val> -time <val> -dump <filename.bmp>\n");
 			printf("\tvector_viz  inputFile -offscreen -w <val> -h <val>\n");
 			printf("\tvector_viz  inputFile -color -speed\n");
+			printf("\tvector_viz  -yaml input.yaml\n");
 			return 0;
 		#endif		
 		}
@@ -2094,12 +2095,12 @@ int main(int argc, char **argv)
 
 		char *nameRoot = nullptr;
 		char *dir = nullptr;
-		char *ngxStr = "3";
-		char *ngyStr = "3";
-		char *ngzStr = "3";
-		char *snxStr = "60";
-		char *snyStr = "60";
-		char *snzStr = "60";
+		char *ngxStr = nullptr;
+		char *ngyStr = nullptr;
+		char *ngzStr = nullptr;
+		char *snxStr = nullptr;
+		char *snyStr = nullptr;
+		char *snzStr = nullptr;
 		char *xcutStr = nullptr;
 		char *ycutStr = nullptr;
 		char *zcutStr = nullptr;
@@ -2347,7 +2348,7 @@ int main(int argc, char **argv)
 					ps.ny = ny;
 					ps.nz = nz;
 				}
-				else if (plane == 'z' && isCut || plane == 'x' && !isCut)
+				else if ((plane == 'z' && isCut) || (plane == 'x' && !isCut))
 				{
 					for (auto &gridVec: gridVector)
 					{
