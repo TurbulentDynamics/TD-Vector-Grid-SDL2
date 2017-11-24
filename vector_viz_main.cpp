@@ -11,8 +11,7 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
-#include "mp_renderer.h"
-#include "quad_renderer.h"
+#include "renderer.h"
 #include "SipYAML.hpp"
 
 float PI=3.1415926535897932384f;
