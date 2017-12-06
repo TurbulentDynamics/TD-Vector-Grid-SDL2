@@ -54,6 +54,8 @@ bool useSpeed = false;
 bool useInPlane = false;
 bool useOrtho = false;
 bool showHeatmap = false;
+bool showVectors = true;
+int displayMode = 0;
 
 const char* programName = "VectorViz v1.00";
 
@@ -1364,20 +1366,23 @@ void DrawSDL()
 	TIMER ktm;
 	ktm.Reset();	
 	
-	CallMovingPointsRenderer(		
-		cam,
-		cudaMem.mpData,
-		cudaMem.mpBufDesc,
-		int( mpBufDescCuda.size() ),
-		cudaMem.intensityRaster,
-		screenW, screenH,
-		ps.curTime,
-		ps.exposure/ps.totalBrightness*cBrightnessMultiplier,
-		ps.length*cLengthMultiplier,
-		maxLength * colorScale,
-		useColor,
-		useSpeed
-		);	
+	if (showVectors)
+	{
+		CallMovingPointsRenderer(
+			cam,
+			cudaMem.mpData,
+			cudaMem.mpBufDesc,
+			int( mpBufDescCuda.size() ),
+			cudaMem.intensityRaster,
+			screenW, screenH,
+			ps.curTime,
+			ps.exposure/ps.totalBrightness*cBrightnessMultiplier,
+			ps.length*cLengthMultiplier,
+			maxLength * colorScale,
+			useColor,
+			useSpeed
+			);
+	}
 	if (showHeatmap)
 	{
 		CallQuadRenderer(
@@ -1765,6 +1770,21 @@ void EventLoop()
 					cameraArrange.rotLR -= 45;
 					if (cameraArrange.rotLR < 0) cameraArrange.rotLR += 360;
 					}
+				if (sym==SDLK_u){
+					if (displayMode == 0) {
+						showVectors = false;
+						showHeatmap = true;
+					}
+					if (displayMode == 1) {
+						showHeatmap = false;
+						showVectors = true;
+					}
+					if (displayMode == 2) {
+						showHeatmap = true;
+						showVectors = true;
+					}
+					displayMode = (++displayMode % 3);
+				}
 				if (sym==SDLK_KP_6){
 					ps.sys.isKeyPadRight=true;
 					ps.pressKeyPadRightTime.Reset();
@@ -1932,21 +1952,18 @@ int InitCuda()
 		fprintf(stderr,"Out of GPU device memory\n");
 		return -1;
 		}	
-	if (showHeatmap)
-	{
-		cudaError=cudaMalloc((void**)&cudaMem.quadBufDesc, quadBufDescCuda.size() * sizeof(SQuadBufDesc));
-		if (cudaError!=cudaSuccess){
-			fprintf(stderr,"Out of GPU device memory\n");
-			return -1;
-			}
-		cudaMemcpy(cudaMem.quadBufDesc, quadBufDescCuda.data(), quadBufDescCuda.size() * sizeof(SQuadBufDesc), cudaMemcpyHostToDevice);
-		cudaError=cudaMalloc((void**)&cudaMem.quadData, quadData.size() * sizeof(float));
-		if (cudaError!=cudaSuccess){
-			fprintf(stderr,"Out of GPU device memory\n");
-			return -1;
-			}
-		cudaMemcpy(cudaMem.quadData, quadData.data(), quadData.size() * sizeof(float), cudaMemcpyHostToDevice);
-	}
+	cudaError=cudaMalloc((void**)&cudaMem.quadBufDesc, quadBufDescCuda.size() * sizeof(SQuadBufDesc));
+	if (cudaError!=cudaSuccess){
+		fprintf(stderr,"Out of GPU device memory\n");
+		return -1;
+		}
+	cudaMemcpy(cudaMem.quadBufDesc, quadBufDescCuda.data(), quadBufDescCuda.size() * sizeof(SQuadBufDesc), cudaMemcpyHostToDevice);
+	cudaError=cudaMalloc((void**)&cudaMem.quadData, quadData.size() * sizeof(float));
+	if (cudaError!=cudaSuccess){
+		fprintf(stderr,"Out of GPU device memory\n");
+		return -1;
+		}
+	cudaMemcpy(cudaMem.quadData, quadData.data(), quadData.size() * sizeof(float), cudaMemcpyHostToDevice);
 	
 	return 0;
 }
@@ -2188,6 +2205,7 @@ int main(int argc, char **argv)
 			std::make_pair("speed", &useSpeed),
 			std::make_pair("inPlane", &useInPlane),
 			std::make_pair("heatmap", &showHeatmap),
+			std::make_pair("vectors", &showVectors),
 			std::make_pair("orthographic", &useOrtho),
 		};
 		std::pair<char const *, Sip::YAMLDocumentUTF8::Node**> subNodes[] =
@@ -2237,6 +2255,7 @@ int main(int argc, char **argv)
 		}
 
 		showHeatmap ^= CmdOptionExists(argv, argv + argc, "-heatmap");
+		showVectors ^= CmdOptionExists(argv, argv + argc, "-vectors");
 
 		int plane = 0;
 		std::vector<int> position;
@@ -2303,6 +2322,7 @@ int main(int argc, char **argv)
 	}
 	else {
 	showHeatmap ^= CmdOptionExists(argv, argv + argc, "-heatmap");
+	showVectors ^= CmdOptionExists(argv, argv + argc, "-vectors");
 	bool isOk=ReadInputFile(inFileName);
 	if (!isOk) {
 		fprintf(stdout,"Error opening input file: %s\n", inFileName);		

@@ -40,6 +40,7 @@ output:
   #filename: plot_full_vector_step_1000.vvf
 
   heatmap: true
+  vectors: true
   inPlane: true
   params: true
   color: true
