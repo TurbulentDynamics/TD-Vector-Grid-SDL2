@@ -614,10 +614,32 @@ void SaveVvfFile(char* filename, std::vector<VectorData> const &grid, int nx, in
 	fclose(outFile);
 }
 
-bool merge_native_slice(const char *dirname, char const *nameRoot, int startidi, int endidi, int startidj, int endidj, int startidk, int endidk, int ngx, int ngy, int snx, int sny, char *outFilename)
-{
-	int nx = snx / ngx;
-	int ny = sny / ngy;
+bool merge_native_slice(const char *dirname, char const *nameRoot, int ngx, int ngy, int ngz, int snx, int sny, int snz, char *outFilename){
+
+
+    std::string str (dirname);
+    std::string str2 ("cut");
+    std::size_t found = str.find(str2);
+    std::string str_cuti = str.substr (found + 4);
+
+    int cuti = std::stoi(str_cuti);
+
+    int nx = snx / ngx;
+    int ny = sny / ngy;
+
+
+    int startidi = cuti / nx;
+    int endidi = startidi;
+
+
+
+    int startidj = 0;
+    int endidj = ngy - 1;
+    int startidk = 0;
+    int endidk = ngz - 1;
+
+
+
 
 	std::vector<VectorData> mergedGridVector;
 	std::vector<float> mergedQuadData;
@@ -684,10 +706,29 @@ bool merge_native_slice(const char *dirname, char const *nameRoot, int startidi,
 	return true;
 }
 
-bool merge_native_axis(const char *dirname, char const *nameRoot, int startidi, int endidi, int startidj, int endidj, int startidk, int endidk, int ngx, int ngy, int snx, int sny, int snz, char *outFilename)
+bool merge_native_axis(const char *dirname, char const *nameRoot, int ngx, int ngy, int ngz, int snx, int sny, int snz, char *outFilename)
 {
-	int nx = snx / ngx;
-	int ny = sny / ngy;
+
+    std::string str (dirname);
+    std::string str2 ("cut");
+    std::size_t found = str.find(str2);
+    std::string str_cutj = str.substr (found + 4);
+
+    int cutj = std::stoi(str_cutj);
+
+    int nx = snx / ngx;
+    int ny = sny / ngy;
+
+    int startidj = cutj / ny;
+    int endidj = startidj;
+
+    int startidi = 0;
+    int endidi = ngx - 1;
+    int startidk = 0;
+    int endidk = ngz - 1;
+
+
+
 
 	std::vector<VectorData> mergedGridVector;
 	std::vector<float> mergedQuadData;
@@ -829,14 +870,15 @@ void RasterLine(std::vector<int2> &points, int x0, int y0, int x1, int y1)
 
 bool ReadMergeInput(char const *dir, char const *nameRoot, int ngx, int ngy, int ngz, int snx, int sny, int snz, int plane, std::vector<int> &position, int axis, std::vector<int> &phi, char *outFilename, char *outNameRoot)
 {
+
 	if (strstr(dir, "slice"))
 	{
-		return merge_native_slice(dir, nameRoot, 1, 1, 0, ngx-1, 0, ngy-1, ngx, ngy, snx, sny, outFilename);
+     	return merge_native_slice(dir, nameRoot, ngx, ngy, ngz, snx, sny, snz, outFilename);
 	}
 
 	if (strstr(dir, "axis"))
 	{
-		return merge_native_axis(dir, nameRoot, 0, ngx-1, 1, 1, 0, ngy-1, ngx, ngy, snx, sny, snz, outFilename);
+		return merge_native_axis(dir, nameRoot, ngx, ngy, ngz, snx, sny, snz, outFilename);
 	}
 
 	if (strstr(dir, "full"))

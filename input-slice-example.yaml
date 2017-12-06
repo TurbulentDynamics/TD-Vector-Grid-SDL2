@@ -3,12 +3,13 @@ input:
   dir: plot_slice_vector_step_1000_cut_21
   ngx: 3
   ngy: 3
+  ngz: 3
   snx: 60
   sny: 60
+  snz: 60
 
 
 output:
-  filename: plot_slice_vector_step_1000_cut_21.vvf
   heatmap: true
   params: true
   color: true
