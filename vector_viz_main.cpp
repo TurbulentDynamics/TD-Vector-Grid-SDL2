@@ -2074,14 +2074,17 @@ void showYAMLValue(Sip::YAMLDocumentUTF8::Node *node, size_t amount = 0)
 int main(int argc, char **argv) 
 {  		
 	if (argc<2){
-			printf("%s\n", programName);
-			printf("Usage:\n");
-			printf("\t%s  -convert inputFile.vvt convertedFile.vvf\n", programName);
-            printf("\t%s  -yaml input.yaml\n", programName);
-			printf("\t%s  -yaml input.yaml -centerX <val> -centerY <val> -centerZ <val> -rotLR <val> -rotUD <val> -distance <val> -exposure <val> -length <val> -intensity <val> -time <val> -dump <filename.bmp>\n", programName);
-			printf("\t%s  -yaml input.yaml -offscreen -w <val> -h <val>\n", programName);
-			printf("\t%s  -yaml input.yaml -color -speed\n", programName);
-			return 0;
+        printf("%s\n", programName);
+        printf("Usage:\n");
+        printf("\t%s  -convert inputFile.vvt convertedFile.vvf\n", programName);
+        printf("\t%s  -yaml <input.yaml>\n", programName);
+
+        printf("\t%s  -yaml <input.yaml> -offscreen true -w <val> -h <val>\n", programName);
+        printf("\t%s  -yaml <input.yaml> -color true -speed true\n", programName);
+
+        printf("\t%s  -name_root <val> -ngx <val> -ngy <val> -ngz <val> -centerX <val> -centerY <val> -centerZ <val> -rotLR <val> -rotUD <val> -distance <val> -exposure <val> -length <val> -intensity <val> -time <val> -dump <filename.bmp>\n", programName);
+
+        return 0;
     }
 
     //Now needs to come from -yaml file
