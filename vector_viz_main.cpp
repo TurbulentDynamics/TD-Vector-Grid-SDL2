@@ -64,12 +64,6 @@ const char* programName = "VectorViz v1.00";
 	#include <windows.h>	
 	#undef min
 	#undef max
-	//#define USE_DEFAULT_FILE
-#endif
-
-#ifdef USE_DEFAULT_FILE
-	//const char* inFileNameDefault="flowyz_nx_01536_0012000_vect.vvf";
-	const char* inFileNameDefault="flowyz0005030.vvf";
 #endif
 
 #if !defined(_DEBUG) && !defined(NO_FULLSCREEN)
@@ -2080,21 +2074,18 @@ void showYAMLValue(Sip::YAMLDocumentUTF8::Node *node, size_t amount = 0)
 int main(int argc, char **argv) 
 {  		
 	if (argc<2){
-		#ifdef USE_DEFAULT_FILE
-			strcpy(inFileName,inFileNameDefault);
-		#else
 			printf("%s\n", programName);
 			printf("Usage:\n");
-			printf("\tvector_viz  -convert inputFile.vvt convertedFile.vvf\n");
-            printf("\tvector_viz  -yaml input.yaml\n");
-			printf("\tvector_viz  -yaml input.yaml -centerX <val> -centerY <val> -centerZ <val> -rotLR <val> -rotUD <val> -distance <val> -exposure <val> -length <val> -intensity <val> -time <val> -dump <filename.bmp>\n");
-			printf("\tvector_viz  -yaml input.yaml -offscreen -w <val> -h <val>\n");
-			printf("\tvector_viz  -yaml input.yaml -color -speed\n");
+			printf("\t%s  -convert inputFile.vvt convertedFile.vvf\n", programName);
+            printf("\t%s  -yaml input.yaml\n", programName);
+			printf("\t%s  -yaml input.yaml -centerX <val> -centerY <val> -centerZ <val> -rotLR <val> -rotUD <val> -distance <val> -exposure <val> -length <val> -intensity <val> -time <val> -dump <filename.bmp>\n", programName);
+			printf("\t%s  -yaml input.yaml -offscreen -w <val> -h <val>\n", programName);
+			printf("\t%s  -yaml input.yaml -color -speed\n", programName);
 			return 0;
-		#endif
-		}
-	else
-		strcpy(inFileName,argv[1]);
+    }
+
+    //Now needs to come from -yaml file
+	//	strcpy(inFileName,argv[1]);
 		
 	char *centerX = nullptr;
 	char *centerY = nullptr;
