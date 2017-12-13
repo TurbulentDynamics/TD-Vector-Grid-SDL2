@@ -2085,15 +2085,13 @@ int main(int argc, char **argv)
 		#else
 			printf("%s\n", programName);
 			printf("Usage:\n");
-			printf("\tvector_viz  inputFile\n");
-			printf("\tvector_viz  inputFile.vvt  -c  convertedFile.vvf\n");			
-			printf("\tvector_viz  inputFile -params\n");
-			printf("\tvector_viz  inputFile -centerX <val> -centerY <val> -centerZ <val> -rotLR <val> -rotUD <val> -distance <val> -exposure <val> -length <val> -intensity <val> -time <val> -dump <filename.bmp>\n");
-			printf("\tvector_viz  inputFile -offscreen -w <val> -h <val>\n");
-			printf("\tvector_viz  inputFile -color -speed\n");
-			printf("\tvector_viz  -yaml input.yaml\n");
+			printf("\tvector_viz  -convert inputFile.vvt convertedFile.vvf\n");
+            printf("\tvector_viz  -yaml input.yaml\n");
+			printf("\tvector_viz  -yaml input.yaml -centerX <val> -centerY <val> -centerZ <val> -rotLR <val> -rotUD <val> -distance <val> -exposure <val> -length <val> -intensity <val> -time <val> -dump <filename.bmp>\n");
+			printf("\tvector_viz  -yaml input.yaml -offscreen -w <val> -h <val>\n");
+			printf("\tvector_viz  -yaml input.yaml -color -speed\n");
 			return 0;
-		#endif		
+		#endif
 		}
 	else
 		strcpy(inFileName,argv[1]);
